@@ -32,7 +32,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.7 Stats & 36-Matchday Season</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.12 Real Prva Liga Squads</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
@@ -75,12 +75,48 @@ const fbihXI={
 "NK Stupčanica Olovo":["Stijepic","Ram ic","Velic","Varesanovic","Pramenkovic","Krpic","Karalic","Op ras ic","Pekaric","Djukanovic","Sadikovic"],
 "HŠK Posušje":["Galic","Beslic","Lasic","Musa","Filipovic","Begic","Bozic","Prses","Markovic","Garcevic","Vidovic"]
 };
+const REAL_PRVA_SQUADS={
+"NK Bratstvo Gračanica":[
+ ["ATT","Ermin Huseinbašić"],["ATT","Nikola Leko"],["ATT","Husein Poturalić"],["ATT","Salim Hadžić"],["ATT","Huso Avdagić"],["ATT","Filip Vukajlović"],["ATT","Benjamin Križevac"],["ATT","Harun Avdagić"],["ATT","Almin Buza"],["ATT","Hamza Oruč"],
+ ["MID","Hazim Okić"],["MID","Jasmin Berbić"],["MID","Ibrahim Tursunović"],["MID","Arnes Ćosić"],["MID","Miljan Stupar"],["MID","Amer Softić"],
+ ["DEF","Franko Dadić"],["DEF","Perica Guskić"],["DEF","Ajdin Tukić"],["DEF","Berin Alić"],["DEF","Mahir Husejnefendić"],["GK","Nihad Kadić"]],
+"FK Igman Konjic":[["ATT","Sanjin Lelić"],["ATT","Kerim Tatar"],["ATT","Amin Alagić"],["ATT","Ali Serdarević"],["ATT","Tarik Hero"],["MID","Malik Kolić"],["MID","Anel Hebibović"],["MID","Mirza Džumhur"],["MID","Adis Hadžanović"],["MID","Berin Hadžimusić"],["DEF","Semir Brkić"],["DEF","Harun Kozić"],["DEF","Kenan Hebibović"],["GK","Josip Bender"],["GK","Armin Cero"],["GK","Benjamin Mujak"]],
+"HNK Čapljina":[["ATT","Ante Prusina"],["ATT","Nikša Šilić"],["ATT","Žarko Kordić"],["ATT","Teo Mikulić"],["ATT","Ante Pažin"],["ATT","Paulo Bašić"],["ATT","Marko Blažević"],["ATT","Luka Bencun"],["MID","Luka Puljić"],["MID","Nikola Jukić"],["MID","Luka Knežević"],["MID","Jakov Kozarić"],["MID","Luka Cvitanović"],["MID","Pero Pervan"],["MID","Marin Miličević"],["MID","Ivano Pehar"],["MID","Mario Zovko"],["DEF","Patrik Bošnjak"],["DEF","Kristijan Prkačin"],["DEF","Edin Novaković"],["DEF","Filip Leko"],["DEF","Sebastian Šego"],["DEF","Edin Vučković"],["DEF","Marin Blagoje"],["DEF","Ivan Dolić"],["GK","Domagoj Markotić"],["GK","Vanja Džidić"],["GK","Draženko Jurković"]],
+"FK Rudar Kakanj":[["ATT","Mehmed Šehić"],["ATT","Sedin Ljuca"],["ATT","Deni Šabić"],["ATT","Alen Muminović"],["ATT","Safet Čago"],["ATT","Haris Šošić"],["ATT","Davud Pašalić"],["MID","Sedad Subašić"],["MID","Emrah Palačkić"],["MID","Belmin Kobilica"],["MID","Mahir Mehić"],["MID","Danis Tolja"],["MID","Rijad Smolo"],["MID","Adi Bešić"],["MID","Dženan Kišić"],["MID","Faruk Jusić"],["MID","Aldin Ismić"],["DEF","Muharem Trako"],["DEF","Sedin Ramić"],["DEF","Ali Panjeta"],["DEF","Adin Hubanić"],["DEF","Omer Musić"],["DEF","Benjamin Musić"],["DEF","Admir Smolo"],["DEF","Ermin Ajanović"],["GK","Nikola Miličević"],["GK","Armin Delibašić"]],
+"NK Vitez":[["ATT","Haris Dilaver"],["ATT","Irman Sejmenović"],["ATT","Hamza Martinović"],["ATT","Neven Vujica"],["ATT","Denijal Suljević"],["MID","Petar Kolenda"],["MID","Amir Krehmić"],["MID","Pavle Bonić"],["MID","Luka Badrov"],["MID","Edin Džebo"],["MID","Armin Karišik"],["DEF","Ivan Jurilj"],["DEF","Davud Arnautović"],["DEF","Vinko Zuljević"],["DEF","Mario Bajo"],["DEF","Luka Tustonja"],["DEF","Afan Ibraković"],["DEF","Kasim Sejdinović"],["DEF","Sanjin Brkić"],["GK","Ajdin Brkić"],["GK","Alem Mujezinović"]],
+"HNK Tomislav":[["ATT","Vinko Duvnjak"],["ATT","Petar Banović"],["ATT","Nikola Šiško"],["ATT","Branimir Šiško"],["ATT","Boris Baškarad"],["ATT","Domagoj Šiško"],["MID","Ivan Ivić"],["MID","Stipan Musić"],["MID","Ivan Perić"],["DEF","Marko Ćerdić"],["DEF","Stipan Križanac"],["DEF","Ivan Sliško"],["DEF","Jasmin Osmić"],["DEF","Faris Hasić"],["DEF","Hilmija Đugum"],["GK","Ivan Sabljo"],["GK","Jakov Anić"],["GK","Ante Letica"]],
+"FK Budućnost Banovići":[["ATT","Dženit Hajdarević"],["ATT","Anel Husić"],["ATT","Islam Forić"],["ATT","Dženis Huseinspahić"],["ATT","Faris Gradišić"],["ATT","Kenan Lacić"],["MID","Maid Demirović"],["MID","Mahir Rizvić"],["MID","Vedad Suljić"],["MID","Tarik Begić"],["MID","Anel Mednolučanin"],["DEF","Bego Kujraković"],["DEF","Elnes Alajmović"],["DEF","Abdulkerim Mehmedspahić"],["DEF","Asim Muratović"],["DEF","Emir Purač"],["DEF","Anis Bungur"],["GK","Ibrahim Berbić"],["GK","Mevludin Ikanović"]],
+"NK TOŠK Tešanj":[["ATT","Faris Zubanović"],["ATT","Tarik Jašarević"],["ATT","Uroš Stanišić"],["MID","Kenan Delić"],["MID","Said Husejinović"],["MID","Nemanja Stjepanović"],["MID","Senedin Hadrović"],["MID","Said Bajrić"],["MID","Mirsad Čabrić"],["MID","Bakir Sprečo"],["MID","Rijad Kurdić"],["MID","Aleksandar Grujić"],["DEF","Slobodan Đekić"],["DEF","Nemanja Martić"],["DEF","Ajdin Mujkić"],["DEF","Almedin Đerzić"],["DEF","Amar Kovčić"],["DEF","Riad Bajrović"],["DEF","Eldin Šišić"],["GK","Azir Muminović"],["GK","Zejd Muratspahić"]],
+"NK Zvijezda Gradačac":[["GK","Sofijan Smajić"],["GK","Amar Hadžić"],["DEF","Adnan Ćosić"],["DEF","Mirza Mehmedović"],["DEF","Amer Vazda"],["DEF","Eldin Hurić"],["DEF","Dženan Đurić"],["MID","Omer Ibrahimović"],["MID","Armin Temim"],["MID","Haris Osmić"],["MID","Adnan Šetkić"],["MID","Haris Hrustanović"]],
+"FK Radnik Hadžići":[["ATT","Andreja Ristić"],["ATT","Benjamin Šehić"],["ATT","Vedad Rahmanović"],["ATT","Amar Sabljica"],["ATT","Ajdin Jusupović"],["MID","Omar Beća"],["MID","Aldin Čajić"],["MID","Faris Kadrić"],["MID","Anel Pirić"],["MID","Gaibija Hukić"],["MID","Eldar Rizvo"],["DEF","Amar Musić"],["DEF","Edin Kovačević"],["DEF","Danis Karačić"],["DEF","Ajdin Kobasević"],["DEF","Armin Mešanović-Imamović"],["GK","Aldin Ćeman"],["GK","Semir Bukvić"]],
+"NK GOŠK Gabela":[["ATT","Antonio Arapović"],["ATT","Thiago Cunha"],["ATT","Filip Obradović"],["ATT","Petar Dabić"],["ATT","Faris Gradišić"],["MID","Antonio Prskalo"],["MID","Talha Tabaković"],["MID","Hamza Ljukovac"],["MID","Antonio Kaćunko"],["MID","Kenan Lamadžema"],["MID","Bakir Karić"],["MID","Luka Zorić"],["MID","Aner Alagić"],["MID","Faruk Duraković"],["DEF","Branko Ćurdo"],["DEF","Gabrijel Čoko"],["DEF","Josip Miličević"],["DEF","Dorian Medić"],["DEF","Luka Pljevaljčić"],["DEF","Er džan Pobrić"],["GK","Elvir Trako"],["GK","Marin Matej Topić"],["GK","Ivan Jelinić"]],
+"FK Sloboda Tuzla":[["ATT","Ahmed Tiro"],["ATT","Nikola Komazec"],["ATT","Kenan Salkanović"],["ATT","Yordan Andres Campana Hinestroza"],["ATT","Miljan Govedarica"],["ATT","Josip Sušić"],["MID","Mirzad Mehanović"],["MID","Ajdin Beganović"],["MID","Uroš Branković"],["MID","Nathan Crepaldi"],["MID","Adnan Šećerović"],["MID","Admir Sadiković"],["DEF","Azur Mahmić"],["DEF","Marin Galić"],["DEF","Tarik Kapetanović"],["DEF","Kemal Osmanković"],["DEF","Amar Jogunčić"],["DEF","Hamza Redžić"],["DEF","Adin Husejinović"],["GK","Igor Rončević"]],
+"NK Travnik":[["ATT","Leo Janković"],["ATT","Hamza Gasal"],["ATT","Denin Jamaković"],["ATT","Faris Delibašić"],["ATT","Mateo Ramljak"],["ATT","Ermin Vunić"],["ATT","Danin Čahut"],["ATT","Nermin Bijelonja"],["ATT","Dino Huremovic"],["MID","Muamer Hamzić"],["MID","Anan Baltić"],["MID","Jan Zlatan Isić"],["MID","Vladimir Grahovac"],["MID","Adin Čefo"],["MID","Tahir Imamović"],["MID","Muhammed Čolaković"],["DEF","Haris Alisah"],["DEF","Nijaz Fazlić"],["DEF","Amar Jusić"],["DEF","Irfan Jašarević"],["DEF","Semir Tiro"],["DEF","Toni Kafadar"],["DEF","Mauro Petrović"],["DEF","Elmin Goran"],["GK","Mirnes Šito"],["GK","Arsenije Matijaš"],["GK","Anis Gromila"]],
+"NK Jedinstvo Bihać":[["ATT","Mislav Petrović"],["ATT","Emanullah Blažević"],["ATT","Salko Mujanović"],["ATT","Aimar Balić"],["ATT","Thiago Pato"],["ATT","Petar Stipić"],["MID","Ali Međuseljac"],["MID","Emin Trnka"],["MID","Elvin Rizvanović"],["DEF","Amir Duraković"],["DEF","Amir Hadrović"],["DEF","Faris Jašarević"],["DEF","Anes Hošić"],["DEF","Amer Drljević"],["DEF","Mladen Zgonjanin"],["DEF","Tin Knežević"],["DEF","Halil Kolenda"],["GK","Imran Bilić"]],
+"NK Stupčanica Olovo":[["ATT","Sulejman Krpić"],["ATT","Aldin Efendić"],["ATT","Emir Karalić"],["ATT","Seid Pramenković"],["ATT","Sedin Doljančić"],["ATT","Ishak Laletović"],["MID","Damir Sadiković"],["MID","Mak Varešanović"],["MID","Gabriel Mačić"],["MID","Munib Karahmetović"],["MID","Hasan Ibrahimović"],["DEF","Irfan Ramić"],["DEF","Amar Pekarić"],["DEF","Petar Đukanović"],["DEF","Amir Velić"],["DEF","Hamza Bešić"],["DEF","Tarik Haznadar"],["DEF","Mak Oprašić"],["DEF","Adnan Alić"],["DEF","Harun Merso"],["GK","Bakir Brajlović"],["GK","Danjel Stijepić"]],
+"HŠK Posušje":[["ATT","David Čamber"],["ATT","Dženan Haračić"],["ATT","Ante Rozić"],["ATT","Sadik Škrijelj"],["ATT","David Marković"],["ATT","Cmiljan Petrić"],["MID","Martin Šroler"],["MID","Borna Filipović"],["MID","Denis Bušnja"],["MID","Marko Domančić"],["MID","Vedad Garčević"],["MID","Omar Pršeš"],["MID","Zvonimir Begić"],["MID","Mateo Božić"],["MID","Ivan Rebić"],["MID","Antonio Delač"],["MID","Andro Kevilj"],["MID","Ivan Gabriel Pehar"],["MID","Duje Pešić"],["DEF","Ivan Novoselec"],["DEF","Josip Bešlić"],["DEF","Darko Bašić"],["DEF","Luka Perko"],["DEF","Božo Musa"],["DEF","Mate Lašić"],["DEF","Marko Rezo"],["DEF","Franco Abrego"],["DEF","Marcelo Kurevija"],["GK","Marko Galić"],["GK","Antonio Soldo"]],
+"FK Laktaši":[["ATT","Milan Šikanjić"],["ATT","David Kitić"],["ATT","Miloš Perović"],["ATT","Aleksa Popović"],["MID","Mihajlo Ševa"],["MID","Thiago Santino López"],["MID","Danilo Močonja"],["MID","Petar Samardžija"],["MID","Igor Trivić"],["MID","Samir Jesus Gonzalez"],["MID","Ivan Grgić"],["MID","Vladimir Petković"],["MID","Aljoša Radjenović"],["MID","Strahinja Štrkić"],["MID","Bojan Burazor"],["MID","Milenko Vasić"],["MID","Arsen Knežević"],["MID","Danilo Backović"],["MID","Aleksa Radetić"],["MID","Elian Emanuel Quinteros"],["DEF","Andrei Jahić"],["DEF","Luka Malić"],["DEF","Miljan Kecman"],["DEF","Anri Chkhikvadze"],["DEF","Dalibor Milić"],["DEF","Sergej Popović"],["GK","Nikola Bunjevac"],["GK","Aleksa Đurđević"],["GK","Nikola Lončar"]],
+"FK Leotar Trebinje":[["DEF","Marko Čubrilo"]],
+"Kozara Gradiška":[["ATT","Obren Cvijanović"],["ATT","Dragan Pejić"],["ATT","Bojan Marković"],["ATT","Stefan Bogosavljević"],["ATT","Dragan Klincov"],["ATT","Marko Babić"],["MID","Noa Karaselimović"],["MID","Danilo Vujičić"],["MID","Dejan Maksimović"],["MID","Lazar Aleksić"],["MID","Srboljub Jandrić"],["MID","Ognjen Škorić"],["MID","Đorđe Veljkić"],["MID","Sergej Govedarica"],["MID","Danilo Ilić"],["MID","Duško Pepić"],["DEF","Savo Veljkić"],["DEF","Nebojša Babić"],["DEF","David Radivojac"],["DEF","Muhamed Divjan"],["DEF","Kosta Đudurović"],["DEF","Ognjen Pljevaljčić"],["DEF","Srđan Mišić"],["GK","Pavle Glišić"],["GK","Dražen Iliktarević"]],
+"FK Potkozarje Aleksandrovac":[["ATT","Luka Mizdrak"],["ATT","Stefan Gajić"],["ATT","Marinko Rastoka"],["ATT","Predrag Pralica"],["ATT","Dejan Tatić"],["ATT","Danilo Savatić"],["ATT","Luka Kovač"],["MID","Aleksandar Radulović"],["MID","Nikola Cebić"],["MID","Dragan Veri ć"],["MID","Miloš Mišić"],["MID","Joshua Andrej Mišić"],["MID","Ljubiša Savić"],["MID","David Vukosavljević"],["DEF","Alex Vujmilović"],["DEF","Saša Stojnić"],["DEF","Branko Keleman"],["DEF","Miloš Babić"],["DEF","Danilo Vučenović"],["DEF","Đorđe Stupar"],["GK","Slavko Roguljić"]],
+"FK Rudar Prijedor":[["ATT","Stefan Marčetić"],["ATT","Petar Barac"],["ATT","Aleksa Mrđa"],["MID","Malik Kolić"],["MID","Daniel Danu"],["MID","Marko Šebez"],["MID","Ognjen Milanović"],["MID","Branislav Kocić"],["MID","Vasilije Veljko Milovanović"],["MID","Đorđe Mitić"],["DEF","Nemanja Pekija"],["DEF","Bojan Batar"],["DEF","Đorđe Babić"],["DEF","Mario Sajаk"],["DEF","Stefan Višekruna"],["DEF","Siniša Mijić"],["GK","Ranko Puškić"],["GK","Dalibor Mitrović"]],
+"FK Slavija Istočno Sarajevo":[["ATT","Mahir Karić"],["ATT","Jovan Bokić"],["ATT","Stefan Arbinja"],["ATT","Darko Hrkalo"],["MID","Nikola Bjeloš"],["MID","Edin Rustemović"],["MID","Kerim Dedović"],["MID","Ognjen Todorović"],["MID","Mihailo Simić"],["MID","Andrej Cvjetanović"],["MID","Dragan Matković"],["MID","Strahinja Maksić"],["MID","Lazar Stjepić"],["MID","Filip Grgić"],["DEF","Marko Perišić"],["DEF","Vladan Mandić"],["DEF","Vasilije Gojković"],["DEF","Ognjen Erbez"],["DEF","Dejan Tausan"],["GK","Marko Kužet"],["GK","Vladimir Vlačo"]],
+"FK Sutjeska Foča":[["ATT","Dimitrije Antić"],["ATT","Uroš Vesić"],["ATT","Luka Radović"],["ATT","Boško Radović"],["ATT","Branko Sekulić"],["ATT","Dragan Pavlović"],["MID","Igor Pantić"],["MID","Nenad Rašević"],["MID","Nikola Mojović"],["MID","Dejan Mojović"],["MID","Sergej Radović"],["MID","Aleksej Bjelogrlić"],["DEF","Faris Hukara"],["DEF","Pavle Koprivica"],["DEF","Aleksa Gagović"],["DEF","Milan Blagojević"],["DEF","Jovan Milošević"],["DEF","Emil Muslić"],["DEF","Milan Vladičić"],["DEF","Đorđe Milutinović"],["DEF","Aleksandar Burilo"],["GK","Nikola Šarović"],["GK","Mihajlo Dabić"],["GK","Andrej Banašević"]],
+"FK Romanija Pale":[["ATT","Petar Karaklajić"],["MID","Savo Ilić"],["MID","Armin Karišik"],["MID","Lee Eunuho"],["MID","Emin Medošević"],["DEF","Dušan Velinov"],["DEF","Kenan Hadžibegović"],["DEF","Petar Milosavljević"],["DEF","Faris Prcić"],["DEF","Luke Mbewe"],["DEF","Strahinja Cvoro"],["DEF","Ivan Gambelić"],["DEF","Strahinja Pekić"],["GK","Dejan Trapara"],["GK","Stefan Šubara"],["GK","Mladen Lučić"]],
+"FK Velež Nevesinje":[["ATT","Stefan Stolić"],["ATT","Sudo Behram"],["ATT","Star Mayemba"],["ATT","Nedim Nuhanović"],["ATT","Belmin-Dilaver Šekerić"],["ATT","Srđan Drašković"],["MID","Giuliano Constantin Hill"],["MID","Ibrahim Aldawoud"],["MID","Nemanja Kešeljević"],["MID","Sergej Prodanović"],["MID","Tibor Jokanović"],["MID","Guillaume Correia"],["DEF","Nidal Škaljić"],["DEF","Zoran Botić"],["DEF","Nedim Demirović"],["GK","Tarik Tikveša"],["GK","Armen Gaš"],["GK","Miloš Zurovac"]],
+"FK Omarska":[["ATT","Ognjen Jaćimović"],["ATT","Lazar Nišić"],["ATT","Vedran Panić"],["ATT","Borislav Grahovac"],["ATT","Vukašin Daničić"],["ATT","Duško Stojnić"],["ATT","Dražen Okolić"],["ATT","Nemanja Cetojević"],["MID","Boško Radinović"],["MID","Milan Vračar"],["MID","Rastko Rastoka"],["MID","Đorđe Gaćeša"],["MID","Anando Krecelj"],["MID","Ognjen Đerman"],["MID","Đorđe Peulja"],["MID","Vuk Žugić"],["DEF","Vladan Anđić"],["DEF","Mario Ratković"],["DEF","Darko Zdjelar"],["DEF","Aljoša Guzina"],["DEF","Mihajlo Marinović"],["DEF","Luka Blagojević"],["GK","Aleksa Trninić"],["GK","Nikola Begović"],["GK","Milan Zgonjanin"]],
+"FK Zvijezda 09":[["ATT","Bakir Begagić"],["ATT","Armin Duraković"],["ATT","Miloš Dragičević"],["ATT","Dragan Došlo"],["ATT","Uroš Stanišić"],["ATT","Saša Jovanović"],["ATT","Milan Nikolić"],["MID","Usman Ajibola Owoyemi"],["MID","Stefan Santrač"],["MID","Pavle Savić"],["MID","Saša Erkić"],["MID","Miko Davidović"],["MID","Vuk Aleksić"],["DEF","Medin Hrvić"],["DEF","Lazar Velički"],["DEF","Branislav Milanov"],["DEF","Đorđe Burnjaković"],["DEF","David Tomić"],["DEF","Andrej Pejčinović"],["DEF","Mišo Jović"],["DEF","Bogdan Perušinović"],["GK","Mihajlo Blagojević"],["GK","Luka Alempić"]],
+"FK Drina Zvornik":[["ATT","Nemanja Dragutinović"],["ATT","Mihajlo Mikan"],["ATT","Oleg Tyulkov"],["ATT","Aleksa Stoisavljević"],["MID","Stefan Janjić"],["MID","Danijel Erčić"],["MID","Nikola Pantić"],["MID","Nikola Milinković"],["MID","Veljko Gavrić"],["MID","Stefan Čonjić"],["DEF","Miloš Jokić"],["DEF","Boris Andrić"],["DEF","Dragan Živanović"],["DEF","Tucker Kai Roderick"],["DEF","Vuk Janković"],["DEF","Danijel Gajić"],["GK","Srđan Nedić"],["GK","Lazar Kulić"]],
+"FK Famos Vojkovići":[["ATT","Pedro Lobo"],["ATT","Aimar Balić"],["ATT","Stefan Radaković"],["ATT","Luka Asentić"],["ATT","Danel Blažić"],["ATT","Đorđe Golijanin"],["ATT","Luka Andrić"],["MID","Slobodan Vučinić"],["MID","Sanin Mesić"],["MID","Benjamin Babić"],["MID","Zehrudin Mehmedović"],["MID","Mihajlo Kovač"],["MID","Marko Tešanović"],["MID","Mladen Drakul"],["MID","Đorđe Timotija"],["MID","Nikola Danilović"],["DEF","Sergej Tomić"],["DEF","Marko Škrba"],["DEF","Marko Marković"],["DEF","Stefan Ristivojević"],["GK","Adel Duškaj"],["GK","Sergej Bjelica"],["GK","Marko Terzić"]],
+"FK Majevica Lopare":[["ATT","Matej Jovanović"],["ATT","Mile Teodorović"],["ATT","Radovan Jokanović"],["ATT","Branko Kecman"],["ATT","Rade Ristić"],["ATT","Neđo Gajić"],["ATT","Damjan Petrović"],["ATT","Ilija Despotović"],["MID","Ognjen Maksimović"],["MID","Nemanja Marić"],["MID","Anđelo Delić"],["MID","Simo Bogdanović"],["MID","Saša Varešić"],["MID","Dejan Davidović"],["MID","Stefan Petrović"],["MID","Duško Pajkanović"],["MID","Ljubiša Ristić"],["MID","Jovan Ristić"],["MID","Nikola Mazić"],["MID","Đorđe Marković"],["DEF","Stefan Spasojević"],["DEF","Dragan Cvijetinović"],["DEF","Boban Jolović"],["DEF","Miroslav Kostić"],["DEF","Živan Marković"],["GK","Miloš Papić"],["GK","Rade Babić"],["GK","Miroslav Ilić"]]
+};
 function playersFor(club){
  if(seedPlayers[club]) return seedPlayers[club].map((x,i)=>({id:i,pos:x[0],name:x[1],age:x[2],ovr:x[3]}));
- const names=fbihXI[club]||[];
- const pos=['GK','DEF','DEF','DEF','DEF','MID','MID','MID','MID','ATT','ATT'];
- return names.map((n,i)=>({id:i,pos:pos[i],name:n,age:18+(i%13),ovr:52+(i%9)}));
+ const real=REAL_PRVA_SQUADS[club];
+ if(real) return real.map((x,i)=>({id:i,pos:x[0],name:x[1],age:19+((i*3)%17),ovr:54+((i*7)%13)}));
+ return [];
 }
+
 const formations={
 "4-3-3":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["CM",32,52],["CM",50,47],["CM",68,52],["LW",20,27],["ST",50,18],["RW",80,27]],
 "4-4-2":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["LM",18,48],["CM",40,50],["CM",60,50],["RM",82,48],["ST",40,25],["ST",60,25]],
@@ -94,8 +130,37 @@ const formations={
 };
 const TEAM_RATING={"FK Sarajevo":72,"FK Željezničar":71,"FK Borac Banja Luka":74,"HŠK Zrinjski Mostar":75,"FK Velež Mostar":68,"NK Široki Brijeg":67,"FK Sloga Meridian":62,"FK Radnik Bijeljina":59,"NK Čelik Zenica":58,"BSK Banja Luka":56};
 const DEFAULT_RATING=56;
-let state=JSON.parse(localStorage.getItem("bhfm")||"null")||{club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null};
+let state=JSON.parse(localStorage.getItem("bhfm")||"null")||{club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},transferSort:"position"};
 
+function clonePlayer(p){return {...p};}
+function seedSquadForClub(club){return playersFor(club).map((p,i)=>({...p,id:`${club}::${i}`}));}
+function ensureClubSquads(){
+ if(!state.clubSquads||typeof state.clubSquads!=="object")state.clubSquads={};
+ const all=[...new Set(Object.values(leagues).flat())].filter(c=>c&&!String(c).startsWith("TBD")&&!String(c).includes("regional"));
+ all.forEach(c=>{if(!Array.isArray(state.clubSquads[c])||!state.clubSquads[c].length)state.clubSquads[c]=seedSquadForClub(c);});
+ if(Array.isArray(state.players)&&state.players.length){
+   const existing=state.clubSquads[state.club];
+   if(!existing||!existing.length)state.clubSquads[state.club]=state.players.map((p,i)=>({...p,id:p.id??`${state.club}::${i}`}));
+ }
+}
+function upgradeRealSquadsV012(){
+ Object.keys(REAL_PRVA_SQUADS).forEach(club=>{
+  const real=REAL_PRVA_SQUADS[club]; const cur=state.clubSquads[club]; if(!Array.isArray(cur)||!cur.length)return;
+  const own=cur.filter(p=>String(p.id||"").startsWith(club+"::"));
+  const transferred=cur.filter(p=>!String(p.id||"").startsWith(club+"::"));
+  const realNames=new Set(real.map(x=>x[1]));
+  const alreadyReal=own.filter(p=>realNames.has(p.name));
+  if(alreadyReal.length<Math.max(1,Math.min(own.length,3)) || own.length<=11){
+    const base=playersFor(club).map((p,i)=>({...p,id:`${club}::${i}`}));
+    const byName=new Set(base.map(p=>p.name));
+    state.clubSquads[club]=base.concat(transferred.filter(p=>!byName.has(p.name)));
+  }
+ });
+}
+function syncCurrentClub(){ensureClubSquads();state.clubSquads[state.club]=(state.players||[]).map(p=>clonePlayer(p));}
+try{upgradeRealSquadsV012();}catch(e){}
+function loadClubSquad(club){ensureClubSquads();state.players=(state.clubSquads[club]||[]).map(p=>clonePlayer(p));normalizeXI();initPlayerStats();}
+function squadById(club,id){ensureClubSquads();return (state.clubSquads[club]||[]).find(p=>String(p.id)===String(id));}
 function squadRating(){
  const ps=state.players||[]; if(!ps.length)return 0;
  const sorted=[...ps].sort((a,b)=>b.ovr-a.ovr); const top=sorted.slice(0,11);
@@ -103,7 +168,7 @@ function squadRating(){
  const depth=sorted.slice(11).reduce((a,p)=>a+p.ovr,0)/(Math.max(1,sorted.length-11));
  return Math.round(topAvg*0.82 + (sorted.length>11?depth*0.18:0));
 }
-function teamRating(club){if(club===state.club)return squadRating()||TEAM_RATING[club]||DEFAULT_RATING;if(TEAM_RATING[club])return TEAM_RATING[club];const ps=playersFor(club);return Math.round(ps.reduce((a,p)=>a+p.ovr,0)/ps.length)||DEFAULT_RATING}
+function teamRating(club){if(club===state.club)return squadRating()||TEAM_RATING[club]||DEFAULT_RATING;ensureClubSquads();const ps=state.clubSquads[club]||[];if(ps.length)return Math.round(ps.reduce((a,p)=>a+p.ovr,0)/ps.length)||DEFAULT_RATING;return TEAM_RATING[club]||DEFAULT_RATING}
 function leagueClubs(){return leagues[state.league].filter(c=>!c.startsWith("TBD")&&!c.includes("regional"))}
 function meetingsForLeague(){return state.league==="Premijer Liga BiH"?4:2}
 function seasonMatchdays(){return (leagueClubs().length-1)*meetingsForLeague()}
@@ -141,10 +206,12 @@ function transferStatus(){
  return {type:"closed",remaining:0,label:`Transfer window closed • Mid-season opens at matchday ${midStart}`};
 }
 function generateTransferPool(){
- const all=Object.keys(seedPlayers).flatMap(c=>seedPlayers[c].map((x,i)=>({id:`${c}-${i}`,club:c,pos:x[0],name:x[1],age:x[2],ovr:x[3],fee:Math.max(15000,Math.round((x[3]-45)*(x[3]-45)*900)),wage:Math.max(400,Math.round((x[3]-45)*45))})));
+ ensureClubSquads();
+ const all=[];Object.entries(state.clubSquads).forEach(([club,players])=>players.forEach(p=>all.push({id:p.id,club,pos:p.pos,name:p.name,age:p.age,ovr:p.ovr,fee:Math.max(15000,Math.round((p.ovr-45)*(p.ovr-45)*900)),wage:Math.max(400,Math.round((p.ovr-45)*45))})));
  const candidates=all.filter(p=>p.club!==state.club&&p.ovr>=Math.max(55,teamRating(state.club)-6));
  return shuffle(candidates).slice(0,24);
 }
+
 function ensureTransferPool(){if(!Array.isArray(state.transferPool)||!state.transferPool.length)state.transferPool=generateTransferPool()}
 function maybeGenerateJobOffer(oldRep,newRep){
  if(newRep<=oldRep)return;
@@ -255,11 +322,12 @@ function initSeason(force=false){
 function save(){localStorage.setItem("bhfm",JSON.stringify(state))}
 function normalizeXI(){
  const valid=state.players.map(p=>p.id), seen=new Set(), out=[];
- (Array.isArray(state.xi)?state.xi:[]).forEach(id=>{id=+id;if(valid.includes(id)&&!seen.has(id)){seen.add(id);out.push(id)}});
+ (Array.isArray(state.xi)?state.xi:[]).forEach(id=>{if(valid.includes(id)&&!seen.has(id)){seen.add(id);out.push(id)}});
  valid.forEach(id=>{if(out.length<Math.min(11,valid.length)&&!seen.has(id)){seen.add(id);out.push(id)}});
  state.xi=out;
 }
-function initClub(){state.players=playersFor(state.club);normalizeXI();initSeason(false);save()}
+
+function initClub(){ensureClubSquads();loadClubSquad(state.club);initSeason(false);save()}
 function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","Results","Cup","Jobs","Transfers","Season Report"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
 function render(){tabs();({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Season Report":seasonReportPage}[state.tab]||home)()}
 function home(){
@@ -280,12 +348,12 @@ function statKey(club,p){return `${club}::${p.id}`}
 function blankPlayerStat(club,p){return{club,id:p.id,name:p.name,pos:p.pos,age:p.age,ovr:p.ovr,apps:0,starts:0,goals:0,assists:0,cleanSheets:0,minutes:0,yellows:0,reds:0}}
 function initPlayerStats(){
  if(!state.playerStats||typeof state.playerStats!=="object")state.playerStats={};
- leagueClubs().forEach(c=>playersFor(c).forEach(p=>{const k=statKey(c,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(c,p)}));
+ ensureClubSquads(); leagueClubs().forEach(c=>(state.clubSquads[c]||[]).forEach(p=>{const k=statKey(c,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(c,p)}));
  (state.players||[]).forEach(p=>{const k=statKey(state.club,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(state.club,p)});
 }
 function lineupForStats(club){
  if(club===state.club){normalizeXI();return state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).slice(0,11)}
- return playersFor(club).slice(0,11);
+ ensureClubSquads();return (state.clubSquads[club]||[]).slice(0,11);
 }
 function weightedPlayer(players){
  if(!players.length)return null;
@@ -363,24 +431,47 @@ function jobs(){
  ${state.jobBoard.map((j,i)=>{const available=state.rep>=j[1]&&i<3;return `<div class="club"><div class="badge">${i+1}</div><div style="flex:1"><b>${j[0]}</b><div class="sub">Required reputation: ${j[1]} • ${available?'Available now':'Reputation locked'}</div></div><button ${available?'':'disabled'} onclick="takeJob('${j[0]}')">Apply</button></div>`}).join("")}</div>`
 }
 function acceptOffer(i){const offer=state.jobOffers[i];if(!offer)return;takeJob(offer.club)}
-function takeJob(c){state.club=c;state.league=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";state.players=playersFor(c);state.xi=state.players.slice(0,11).map(p=>p.id);state.jobOffers=[];initSeason(true);state.tab="Home";save();render()}
+function takeJob(c){
+ if(!c||c===state.club)return;
+ syncCurrentClub();
+ state.club=c;state.league=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";
+ loadClubSquad(c);
+ state.xi=state.players.slice(0,11).map(p=>p.id);
+ state.jobOffers=[];
+ state.tab="Home";save();render();
+}
+
 function transfers(){
  const st=transferStatus();
  if(st.type!=="closed")ensureTransferPool();
  const available=st.type!=="closed"?state.transferPool.filter(p=>p.club!==state.club):[];
+ const sort=state.transferSort||"position";
+ const sorted=[...available].sort((a,b)=>sort==="rating"?(b.ovr-a.ovr)||a.name.localeCompare(b.name):sort==="price"?(a.fee-b.fee)||a.name.localeCompare(b.name):(a.pos.localeCompare(b.pos)||b.ovr-a.ovr||a.name.localeCompare(b.name)));
  document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p class="sub">${st.label}</p>
+ <div class="row"><span><b>Sort transfer pool</b></span><select onchange="state.transferSort=this.value;save();render()"><option value="position" ${sort==="position"?"selected":""}>Position</option><option value="rating" ${sort==="rating"?"selected":""}>Rating</option><option value="price" ${sort==="price"?"selected":""}>Price</option></select></div>
  ${st.type==="mid"?`<div class="notice">Mid-season window lasts 4 matchday ticks. Player movement is currently simplified; the full AI transfer market will expand from this pool.</div>`:""}
  ${st.type==="summer"?`<div class="notice">Summer market lasts 10 transfer ticks. Advance a tick to refresh the pool and let the market move.</div><button class="primary" onclick="useTransferTick()">Advance summer transfer tick</button>`:""}
  ${st.type==="closed"?`<div class="notice">No transfer window is currently open. ${st.label}</div>`:""}
- ${available.length?`<div class="list">${available.map((p,i)=>`<div class="club"><div style="flex:1"><b>${p.name}</b><div class="sub">${p.club} • ${p.pos} • ${p.age} yrs • OVR ${p.ovr}</div><div class="sub">Fee €${p.fee.toLocaleString()} • Wage €${p.wage.toLocaleString()}/mo</div></div><button onclick="buyPlayer(${i})">${state.balance>=p.fee?'Buy':'Too expensive'}</button></div>`).join("")}</div>`:`${st.type!=="closed"?'<div class="sub">No players currently match the simplified transfer pool.</div>':''}`}</div>`
+ ${sorted.length?`<div class="list">${sorted.map((p,i)=>`<div class="club"><div style="flex:1"><b>${p.name}</b><div class="sub">${p.club} • ${p.pos} • ${p.age} yrs • OVR ${p.ovr}</div><div class="sub">Fee €${p.fee.toLocaleString()} • Wage €${p.wage.toLocaleString()}/mo</div></div><button onclick="buyPlayerById(${JSON.stringify(p.id)})">${state.balance>=p.fee?'Buy':'Too expensive'}</button></div>`).join("")}</div>`:`${st.type!=="closed"?'<div class="sub">No players currently match the simplified transfer pool.</div>':''}`}</div>`
 }
-function buyPlayer(i){const st=transferStatus();if(st.type==="closed")return;ensureTransferPool();const p=state.transferPool.filter(x=>x.club!==state.club)[i];if(!p||state.balance<p.fee)return;state.balance-=p.fee;state.players.push({id:Date.now(),pos:p.pos,name:p.name,age:p.age,ovr:p.ovr});state.transfersDone.push({name:p.name,from:p.club,to:state.club,fee:p.fee});state.transferPool=state.transferPool.filter(x=>x.id!==p.id);save();render()}
+function buyPlayerById(id){
+ const st=transferStatus();if(st.type==="closed")return;ensureClubSquads();
+ const p=state.transferPool.find(x=>String(x.id)===String(id)&&x.club!==state.club);if(!p||state.balance<p.fee)return;
+ const source=state.clubSquads[p.club]||[];const sourceIndex=source.findIndex(x=>String(x.id)===String(p.id));if(sourceIndex<0)return;
+ state.balance-=p.fee;state.clubSquads[p.club]=source.filter((_,i)=>i!==sourceIndex);
+ const moved=clonePlayer(source[sourceIndex]);state.players.push(moved);state.clubSquads[state.club]=state.players.map(clonePlayer);
+ normalizeXI();state.transfersDone.push({name:moved.name,from:p.club,to:state.club,fee:p.fee,id:moved.id});
+ state.transferPool=state.transferPool.filter(x=>String(x.id)!==String(p.id));save();render();
+}
+function buyPlayer(i){const st=transferStatus();if(st.type==="closed")return;ensureTransferPool();const p=state.transferPool.filter(x=>x.club!==state.club)[i];if(p)buyPlayerById(p.id)}
+
 function sellPlayer(id){
  if(state.players.length<=11)return;
  const p=state.players.find(x=>String(x.id)===String(id)); if(!p)return;
  const fee=Math.round(playerValue(p)*0.55);
  if(!confirm(`Sell ${p.name} for €${fee.toLocaleString()}?`))return;
  state.players=state.players.filter(x=>String(x.id)!==String(id));
+ syncCurrentClub();
  state.xi=state.xi.filter(x=>String(x)!==String(id));
  normalizeXI(); state.balance+=fee; state.transfersDone.push({name:p.name,from:state.club,to:"Sold",fee});
  save();render();
