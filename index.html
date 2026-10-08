@@ -32,7 +32,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.1</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.3 Real Data</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
@@ -46,56 +46,104 @@ const leagues={
 };
 
 const seedPlayers={
-"FK Sarajevo":[["GK","GK 1",70],["DEF","DEF 1",71],["DEF","DEF 2",69],["DEF","DEF 3",68],["MID","MID 1",72],["MID","MID 2",70],["MID","MID 3",69],["MID","MID 4",67],["ATT","ATT 1",73],["ATT","ATT 2",71],["ATT","ATT 3",68],["GK","GK 2",62],["DEF","DEF 4",64],["MID","MID 5",64],["ATT","ATT 4",63]],
-"FK Željezničar":[["GK","GK 1",69],["DEF","DEF 1",70],["DEF","DEF 2",68],["DEF","DEF 3",66],["MID","MID 1",71],["MID","MID 2",69],["MID","MID 3",67],["MID","MID 4",65],["ATT","ATT 1",71],["ATT","ATT 2",69],["ATT","ATT 3",67],["GK","GK 2",61],["DEF","DEF 4",63],["MID","MID 5",63],["ATT","ATT 4",62]]
+"FK Sarajevo":[["GK","Ivan Banic",31,70],["GK","Sanin Musija",21,62],["DEF","Nermin Mujkic",22,69],["DEF","Nikola Djuric",19,66],["DEF","Renato Gojkovic",30,68],["DEF","Shane Maroodza",22,66],["DEF","Petar Djukanovic",18,61],["DEF","Amar Beganovic",26,70],["DEF","Luka Hujber",27,66],["DEF","Stefan Ristovski",34,64],["MID","Sergey Ignatkov",19,68],["MID","Antonio Galesic",23,66],["MID","Rafail Mamas",25,66],["MID","Gojko Cimirot",33,68],["MID","Agon Elezi",25,72],["MID","Rijad Telalovic",17,65],["MID","Adem Ljajic",34,70],["ATT","Leo Mikic",29,67],["ATT","Francis Kyeremeh",29,68],["ATT","Filip Zivkovic",19,65],["ATT","Ricardo Caraballo",22,67],["ATT","Bartol Barisic",23,66],["ATT","Andreja Ristic",22,63],["ATT","Jonathan Agyekum",20,62]],
+"FK Željezničar":[["GK","Vedad Muftic",24,69],["GK","Igor Roncevic",22,61],["GK","Tarik Abdulahovic",28,60],["DEF","Collin Seedorf",31,67],["DEF","Ermin Bicakcic",36,66],["DEF","Mustafa Sukilovic",23,64],["DEF","Edin Osmanovic",24,63],["DEF","Enes Alic",26,70],["DEF","Deni Memisevic",19,60],["DEF","Giovanni Troupee",28,63],["MID","Aleksa Pejic",27,68],["MID","Armin Hodzic",26,65],["MID","Ismail Oulad M'Hand",21,63],["MID","Samir Radovac",30,64],["MID","Dominik Prokop",29,67],["MID","Bojan Nastic",32,62],["MID","Madzid Sosic",23,72],["MID","Deni Milosevic",31,64],["ATT","Matej Cvetanoski",28,68],["ATT","Dzenan Sabic",20,65],["ATT","Muharem Huskovic",23,66],["ATT","Joey Konings",28,64],["ATT","Ibraheem Adams Olanrewaju",19,61]],
+"FK Borac Banja Luka":[["GK","Mladen Jurkas",18,70],["GK","Nikola Cetkovic",24,61],["DEF","Abel Pascual",30,67],["DEF","Domagoj Culina",21,64],["DEF","Sebastian Herrera",31,68],["DEF","Dusan Vrbic",23,63],["DEF","Erik Ridjan",20,60],["MID","Stefan Savic",32,69],["MID","Ante Roguljic",30,65],["ATT","Amar Milak",20,63],["ATT","Omar Sijaric",24,64],["ATT","Dani Romera",30,68],["ATT","Enver Kulasin",22,70],["MID","David Vukovic",23,68],["MID","Ognjen Radošević",24,62]],
+"HŠK Zrinjski Mostar":[["GK","Goran Karacic",29,70],["GK","Antonio Djakovic",25,63],["GK","Matej Bogdan",18,58],["DEF","Karlo Stapic",24,67],["DEF","Darick Kobie Morris",30,66],["DEF","Niko Vukancic",24,64],["DEF","David Karacic",20,62],["DEF","Hrvoje Barisic",35,65],["DEF","Slobodan Jakovljevic",37,63],["DEF","Petar Mamic",30,67],["DEF","Ante Susak",20,62],["DEF","Toma Palic",24,60],["DEF","Viktor Grbic",22,63],["DEF","Marko Vranjkovic",27,65],["DEF","Kerim Memija",30,66]],
+"FK Velež Mostar":[["GK","Faris Ribic",23,62],["GK","Emil Velic",31,63],["DEF","Adin Bajric",25,65],["DEF","Ajdin Nukic",26,64],["DEF","Mahir Rahimic",27,63],["DEF","Aldin Mesic",24,62],["MID","Said Duranovic",25,64],["MID","Abdullah Raffidine",28,66],["MID","Ayham Shhade",25,63],["MID","Nino Stojanovic",29,65],["MID","Anes Omerovic",25,64],["ATT","Mohamed Abdallah Abdallah",27,66],["ATT","Đani Salcin",25,62],["ATT","Armin Imamovic",22,60],["ATT","Vedad Abidovic",19,61],["ATT","Esmir Hasukic",24,64]],
+"NK Široki Brijeg":[["GK","Ivan Puljic",24,61],["GK","Eugen Ciban",21,58],["DEF","Ivan Maric",23,65],["DEF","Ivan Pranjic",26,63],["DEF","Nediljko Stjepanovic",22,62],["DEF","Hubert Sobol",26,61],["MID","Mato Stanic",28,67],["MID","Petar Petrisko",24,62],["MID","Ivano Srdoc",21,64],["ATT","Ilya Chernyak",24,65],["ATT","Ivan Delic",26,64],["ATT","Saydou Bangura",23,63],["ATT","Petar Radeljic",22,61]],
+"FK Sloga Meridian":[["GK","Nikola Vukovic",28,60],["GK","Vladan Kovacevic",23,57],["DEF","Petar Kunic",32,62],["DEF","Nikola Mandic",31,61],["DEF","Marko Mijic",29,61],["DEF","Stefan Jokic",25,60],["MID","Dejan Bosnjak",28,62],["MID","Milos Stojanovic",27,61],["MID","Vladimir Arsic",25,60],["ATT","Nikola Ninkovic",31,64],["ATT","Sasa Jovanovic",29,62],["ATT","Nemanja Zlatkovic",25,60]],
+"FK Radnik Bijeljina":[["GK","Dusan Markovic",28,63],["GK","Srdjan Nedic",19,57],["DEF","Blondon Meyapya",25,64],["DEF","Jovan Pavlovic",26,61],["DEF","Patrik Klancir",22,60],["DEF","Slavisa Radovic",32,62],["DEF","Djordje Cosic",30,61],["DEF","Andrija Markovic",23,63],["DEF","Bozidar Dimitric",18,60],["MID","Huso Karjasevic",29,64],["MID","Pedro Torres",27,61],["MID","Felix Osei Agyemang",19,58],["MID","Andrej Krstic",20,59],["MID","Nebojsa Gavric",34,59],["MID","Mohamed Ghorzi",26,65],["MID","Emanuel Crnko",27,64],["ATT","Danilo Teodorovic",24,65],["ATT","Antoine Ijoma",21,62],["ATT","Njegos Kupusovic",25,64]],
+"NK Čelik Zenica":[["GK","Adi Durmo",23,61],["GK","Arman Sutkovic",21,58],["DEF","Amer Hodzic",21,62],["DEF","Halid Sabanovic",26,63],["DEF","Aldin Isakovic",40,58],["DEF","Kenan Delic",27,60],["MID","Aldin Hrvanovic",28,64],["MID","Denin Jamakovic",21,60],["MID","Emrah Palackic",21,58],["ATT","Samy Faraj",24,63],["ATT","Anes Masic",26,64],["ATT","Dzevad Sijamija",24,62],["ATT","Emmanuel Sieh",19,60]],
+"BSK Banja Luka":[["GK","Aleksa Stupar",23,59],["GK","Milan Kovacevic",25,55],["DEF","Nebojsa Runic",33,57],["DEF","Aleksandar Subic",32,58],["DEF","Marko Radic",22,56],["DEF","Nikola Popovic",24,55],["MID","Dragan Pejic",18,57],["MID","Stefan Djuric",22,56],["MID","Boris Vukelic",25,55],["ATT","Boro Eric",23,60],["ATT","Nemanja Cetojevic",20,57],["ATT","Luka Savic",21,55]]
 };
+const fbihXI={
+"NK Bratstvo Gračanica":["Imamovic","Buza","Dadic","Stupar","Guskic","Cosic","Avdagic","Hadzic","Huseinbasic","Leko","Sujic"],
+"FK Igman Konjic":["Ceman","Drljevic","Hebibovic","Colic","Markovic","Sumo","Brutus","Brackovic","Dzumhur","Mahmic","Lelic"],
+"HNK Čapljina":["Jerkovic","Kordic","Raspudic","Cvitanovic","Ivankovic","Puljic","Jukic","Katavic","Dolic","Seva","Imocanin"],
+"FK Rudar Kakanj":["Milicevic","Music","Subasic","Arnautovic","Hubanic","Beganovic","Sehic","Sabic","Panjeta","Kisic","Musica"],
+"NK Vitez":["Mujezinovic","Baltic","Bungur","Bon ic","Karalic","Makic","Gasi","Jusupovic","Vujica","Redzic","Memisevic"],
+"HNK Tomislav":["Sabljo","Cerdic","Hasic","Slisko","Peric","Music","Os mic","Sisko","Djugum","Banovic","Krizanac"],
+"FK Budućnost Banovići":["Ikanovic M","Ikanovic J","Rizvic","Begic","Husic","Mehmedspahic","Mesanovic","Kurjakovic","Huseinpasic","Purac","Alajmovic"],
+"NK TOŠK Tešanj":["Muminovic","Muminovic 2","Hadzic","Kovacevic","Mujic","Smajic","Mehic","Hodzic","Basic","Ibric","Smajlovic"],
+"NK Zvijezda Gradačac":["Smajic","Cosic","Mehmedovic","Vazda","Huric","Djuric","Ibrahim","Temim","Osmic","Setkic","Hrustanovic"],
+"FK Radnik Hadžići":["Mujanic","Music","Dizdarevic","Hukic","Kadric","Cajic","Sabljica","Rizvo","Miskovic","Piric","Sehic"],
+"NK GOŠK Gabela":["Trako","Coko","Dabic","Lamad zema","Milecevic","Tabakovic","Alagic","Medic","Arapovic","Kacunko","Durakovic"],
+"FK Sloboda Tuzla":["Roncevic","Kapetanovic","Secerovic","Redzic","Husejinovic","Beganovic","Brankovic","Mehanovic","Tiro","Mahmud","Kruz"],
+"NK Travnik":["Basic","Saric","Bajric","Hodzic","Kovacevic","Memic","Dedic","Suljic","Husic","Ahmetovic","Osmanovic"],
+"NK Jedinstvo Bihać":["Bilic","Jasar evic","Pasic","Durakovic","Hasanovic","Petrovic","Medjuseljac","Mujanovic","Trnka","Knezevic","Hadrovic"],
+"NK Stupčanica Olovo":["Stijepic","Ram ic","Velic","Varesanovic","Pramenkovic","Krpic","Karalic","Op ras ic","Pekaric","Djukanovic","Sadikovic"],
+"HŠK Posušje":["Galic","Beslic","Lasic","Musa","Filipovic","Begic","Bozic","Prses","Markovic","Garcevic","Vidovic"]
+};
+function playersFor(club){
+ if(seedPlayers[club]) return seedPlayers[club].map((x,i)=>({id:i,pos:x[0],name:x[1],age:x[2],ovr:x[3]}));
+ const names=fbihXI[club]||[];
+ const pos=['GK','DEF','DEF','DEF','DEF','MID','MID','MID','MID','ATT','ATT'];
+ return names.map((n,i)=>({id:i,pos:pos[i],name:n,age:18+(i%13),ovr:52+(i%9)}));
+}
 const formations={
 "4-3-3":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["CM",32,52],["CM",50,47],["CM",68,52],["LW",20,27],["ST",50,18],["RW",80,27]],
 "4-4-2":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["LM",18,48],["CM",40,50],["CM",60,50],["RM",82,48],["ST",40,25],["ST",60,25]],
 "3-5-2":[["GK",50,88],["CB",30,73],["CB",50,77],["CB",70,73],["LWB",12,53],["CM",32,48],["CM",50,43],["CM",68,48],["RWB",88,53],["ST",40,24],["ST",60,24]]
 };
-let state=JSON.parse(localStorage.getItem("bhfm")||"null")||{
-club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,
-formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026
-};
-function playersFor(club){
- if(seedPlayers[club]) return seedPlayers[club].map((x,i)=>({id:i,pos:x[0],name:x[1],ovr:x[2],age:18+(i*3)%15}));
- return [["GK","GK 1",58],["DEF","DEF 1",58],["DEF","DEF 2",57],["DEF","DEF 3",56],["MID","MID 1",59],["MID","MID 2",57],["MID","MID 3",56],["MID","MID 4",54],["ATT","ATT 1",60],["ATT","ATT 2",57],["ATT","ATT 3",55],["GK","GK 2",52],["DEF","DEF 4",52],["MID","MID 5",51],["ATT","ATT 4",51]].map((x,i)=>({id:i,pos:x[0],name:x[1],ovr:x[2],age:18+(i*3)%15}));
+const TEAM_RATING={"FK Sarajevo":72,"FK Željezničar":71,"FK Borac Banja Luka":74,"HŠK Zrinjski Mostar":75,"FK Velež Mostar":68,"NK Široki Brijeg":67,"FK Sloga Meridian":62,"FK Radnik Bijeljina":59,"NK Čelik Zenica":58,"BSK Banja Luka":56};
+const DEFAULT_RATING=56;
+let state=JSON.parse(localStorage.getItem("bhfm")||"null")||{club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[]};
+
+function teamRating(club){if(TEAM_RATING[club])return TEAM_RATING[club];const ps=playersFor(club);return Math.round(ps.reduce((a,p)=>a+p.ovr,0)/ps.length)||DEFAULT_RATING}
+function leagueClubs(){return leagues[state.league].filter(c=>!c.startsWith("TBD")&&!c.includes("regional"))}
+function makeTable(){const t={};leagueClubs().forEach(c=>t[c]={club:c,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0});return t}
+function generateFixtures(clubs){
+ let arr=[...clubs],n=arr.length,rounds=[];
+ for(let r=0;r<n-1;r++){let games=[];for(let i=0;i<n/2;i++){let a=arr[i],b=arr[n-1-i];games.push(r%2===0?{home:a,away:b}:{home:b,away:a})}rounds.push(games);arr=[arr[0],arr[n-1],...arr.slice(1,n-1)]}
+ return [...rounds,...rounds.map(g=>g.map(x=>({home:x.away,away:x.home})))].flat()
+}
+function initSeason(force=false){
+ const clubs=leagueClubs(),needed=clubs.length*(clubs.length-1);
+ if(force||!Array.isArray(state.fixtures)||state.fixtures.length!==needed||!state.table||Object.keys(state.table).length!==clubs.length){
+  state.matchday=0;state.fixtures=generateFixtures(clubs);state.table=makeTable();state.results=[];state.points=0;state.played=0;state.wins=0;state.draws=0;state.losses=0;
+ }
 }
 function save(){localStorage.setItem("bhfm",JSON.stringify(state))}
-function initClub(){state.players=playersFor(state.club);state.xi=state.players.slice(0,11).map(p=>p.id);save()}
+function initClub(){state.players=playersFor(state.club);if(!Array.isArray(state.xi)||state.xi.length!==11)state.xi=state.players.slice(0,11).map(p=>p.id);initSeason(false);save()}
 function tabs(){let t=["Home","Squad & Tactics","League","Cup","Jobs","Transfers"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
-function render(){tabs();let a=document.getElementById("app");({Home:home,"Squad & Tactics":squad,League:league,Cup:cup,Jobs:jobs,Transfers:transfers}[state.tab])()}
-function home(){document.getElementById("app").innerHTML=`
-<div class="card"><div class="sub">${state.league}</div><h2>${state.club}</h2><div class="grid">
-<div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div>
-<div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">Points</div><div class="stat">${state.points}</div></div></div></div>
-<div class="card"><h3>Next fixture</h3><p>${nextOpponent()}</p><button class="primary" onclick="playMatch()">Play match</button></div>
-<div class="card"><h3>Career</h3><p class="sub">Start small, win promotion, build reputation, reach Premijer Liga and Europe. If fired, your career continues through the jobs market.</p></div>
-<div class="notice">Database status: league structure is loaded. Player names are intentionally provisional until the verified 2026/27 squad database is imported.</div>`}
-function nextOpponent(){let all=leagues[state.league].filter(x=>!x.startsWith("TBD")&&!x.includes("regional"));if(all.length<2)return"Schedule pending";let idx=(state.played+1)%all.length;return (state.played%2?"Away":"Home")+" • "+(all[idx]||all[0])}
-function squad(){if(!state.players.length)initClub();let formation=formations[state.formation];let mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||state.players[i]}));document.getElementById("app").innerHTML=`
-<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club}</div></div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div>
-<div class="pitch">${mapped.map((m,i)=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div>
-<div class="card"><h3>Starting XI</h3>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.filter(p=>p.pos==="GK"||p.pos==="DEF"||p.pos==="MID"||p.pos==="ATT").map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div>
-<div class="card"><h3>Squad</h3><div class="list">${state.players.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs</span></span><b>${p.ovr}</b><span class="sub">#${p.id+1}</span></div>`).join("")}</div></div>`}
-function changeFormation(f){state.formation=f;state.xi=state.players.slice(0,11).map(p=>p.id);save();render()}
-function replaceXI(i,id){state.xi[i]=+id;save();render()}
-function league(){let clubs=leagues[state.league];document.getElementById("app").innerHTML=`<div class="card"><h2>${state.league}</h2><div class="sub">Simplified season table — full fixtures/results engine comes next.</div></div>${clubs.map((c,i)=>`<div class="club"><div class="badge">${i+1}</div><div style="flex:1"><b>${c}</b><div class="sub">${i===0&&state.league==="Premijer Liga BiH"?"Club database loaded":"Playable league slot"}</div></div><b>${i===0?state.points:Math.max(0,Math.floor(state.points-(i*2)))}</b></div>`).join("")}`}
-function cup(){document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><p>National cup is part of the career structure. Draw and round simulation will be connected to the match engine after the league scheduler.</p><button onclick="alert('Cup draw module reserved for v0.2')">View draw</button></div>`}
-function jobs(){let jobs=[["NK Čelik Zenica",58],["FK Radnik Bijeljina",55],["NK Bratstvo Gračanica",48],["FK Sarajevo",72],["FK Željezničar",71]];document.getElementById("app").innerHTML=`<div class="card"><h2>Jobs</h2><p class="sub">Your reputation: ${state.rep}. Higher reputation unlocks stronger clubs.</p>${jobs.map(j=>`<div class="club"><div style="flex:1"><b>${j[0]}</b><div class="sub">Required reputation: ${j[1]}</div></div><button ${state.rep<j[1]?'disabled':''} onclick="takeJob('${j[0]}')">Apply</button></div>`).join("")}</div>`}
-function takeJob(c){state.club=c;state.league=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";initClub();state.tab="Home";render()}
-function transfers(){document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p>Transfer market foundation is ready. v0.2 will add verified player pools, wages, fees, loans and club budgets.</p><div class="notice">For v0.1, the priority is getting the season/match loop stable before adding a large transfer database.</div></div>`}
+function render(){tabs();({Home:home,"Squad & Tactics":squad,League:league,Cup:cup,Jobs:jobs,Transfers:transfers}[state.tab])()}
+function home(){
+ const pos=standings().findIndex(x=>x.club===state.club)+1,total=leagueClubs().length*2-2;
+ document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}/${total}</div><h2>${state.club}</h2><div class="grid"><div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div><div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">League</div><div class="stat">#${pos||"-"} • ${state.points} pts</div></div></div></div>
+ <div class="card"><h3>Next fixture</h3><p>${nextOpponent()}</p>${state.matchday<total?'<button class="primary" onclick="playMatch()">Play matchday</button>':'<div class="notice">League season complete.</div>'}</div>
+ <div class="card"><h3>Latest matchday</h3>${latestRoundHTML()}</div>
+ <div class="card"><h3>Real 2026/27 data</h3><p class="sub">Club/player names are sourced from current 2026/27 federation and squad listings. OVR is a game attribute, not an official player rating. Prva liga FBiH starting XIs are based on published 2026/27 match lineups.</p></div><div class="card"><h3>Season engine</h3><p class="sub">Every fixture on the matchday is simulated together. All clubs receive their points, goals and results, and the table is recalculated after every matchday.</p></div>`
+}
+function fixtureForRound(round){const n=leagueClubs().length;return state.fixtures.slice(round*n/2,(round+1)*n/2)}
+function nextOpponent(){const total=leagueClubs().length*2-2;if(state.matchday>=total)return"Season complete";const f=fixtureForRound(state.matchday).find(x=>x.home===state.club||x.away===state.club);if(!f)return"Schedule pending";return`${f.home===state.club?"Home":"Away"} • ${f.home===state.club?f.away:f.home}`}
+function poissonish(lambda){const r=Math.random();if(r<Math.exp(-lambda))return 0;if(r<.60)return 1;if(r<.86)return 2;if(r<.96)return 3;if(r<.99)return 4;return 5}
+function simulateFixture(f){const diff=teamRating(f.home)+3.5-teamRating(f.away);return{home:f.home,away:f.away,hg:Math.min(poissonish(Math.max(.35,1.25+diff*.055)),6),ag:Math.min(poissonish(Math.max(.25,1.05-diff*.045)),6)}}
+function applyResult(r){const h=state.table[r.home],a=state.table[r.away];h.p++;a.p++;h.gf+=r.hg;h.ga+=r.ag;a.gf+=r.ag;a.ga+=r.hg;if(r.hg>r.ag){h.w++;h.pts+=3;a.l++}else if(r.hg<r.ag){a.w++;a.pts+=3;h.l++}else{h.d++;a.d++;h.pts++;a.pts++}}
+function standings(){return Object.values(state.table).sort((a,b)=>b.pts-a.pts||(b.gf-b.ga)-(a.gf-a.ga)||b.gf-a.gf||b.w-a.w||a.club.localeCompare(b.club))}
+function latestRoundHTML(){if(!state.results.length)return'<div class="sub">No matches played yet.</div>';return state.results[state.results.length-1].map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join("")}
 function playMatch(){
- let opp=nextOpponent(), strength=state.players.length?state.players.slice(0,11).reduce((a,p)=>a+p.ovr,0)/11:60;
- let base=Math.max(0.15,Math.min(.85,(strength-45)/35)), r=Math.random(), win=r<base*.62, draw=!win&&r<base*.62+(1-base)*.42;
- let gf=win?1+Math.floor(Math.random()*3):draw?Math.floor(Math.random()*2):Math.floor(Math.random()*2);
- let ga=win?Math.floor(Math.random()*2):draw?gf:1+Math.floor(Math.random()*3);
- state.played++; if(win){state.wins++;state.points+=3;state.rep+=2}else if(draw){state.draws++;state.points+=1;state.rep+=0}else{state.losses++;state.rep=Math.max(0,state.rep-1)}
- state.balance+=win?15000:draw?5000:-5000; save();
- alert(`${state.club} ${gf}–${ga} ${opp}\\n${win?"WIN":draw?"DRAW":"LOSS"}\\nReputation: ${state.rep}`);
+ const total=leagueClubs().length*2-2;if(state.matchday>=total)return;
+ const round=fixtureForRound(state.matchday),my=round.find(x=>x.home===state.club||x.away===state.club);if(!my)return;
+ let results=round.map(simulateFixture),idx=results.findIndex(r=>r.home===my.home&&r.away===my.away);
+ const avg=state.players.slice(0,11).reduce((a,p)=>a+p.ovr,0)/11;
+ const mod=(avg-teamRating(state.club))*.025+(state.mentality==="Attacking"?.04:state.mentality==="Defensive"?-.02:0);
+ const diff=(my.home===state.club?avg:teamRating(my.home))+3.5-(my.away===state.club?avg:teamRating(my.away));
+ results[idx]={home:my.home,away:my.away,hg:Math.min(poissonish(Math.max(.35,1.25+diff*.055+mod)),6),ag:Math.min(poissonish(Math.max(.25,1.05-diff*.045-mod*.4)),6)};
+ results.forEach(applyResult);state.results.push(results);state.matchday++;const r=results[idx];
+ state.played++;if(r.hg>r.ag){state.wins++;state.points+=3;state.rep+=2}else if(r.hg<r.ag){state.losses++;state.rep=Math.max(0,state.rep-1)}else{state.draws++;state.points++}
+ state.balance+=r.hg>r.ag?15000:r.hg===r.ag?5000:-5000;save();
+ alert(`MATCHDAY ${state.matchday}\n\n${results.map(x=>`${x.home} ${x.hg}–${x.ag} ${x.away}`).join("\n")}\n\nYour result: ${state.club} ${r.hg}–${r.ag} ${r.home===state.club?r.away:r.home}`);
  render()
 }
+function squad(){if(!state.players.length)initClub();let formation=formations[state.formation],mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||state.players[i]}));document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club}</div></div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div><div class="pitch">${mapped.map(m=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Squad</h3><div class="list">${state.players.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs</span></span><b>${p.ovr}</b><span class="sub">#${p.id+1}</span></div>`).join("")}</div></div>`}
+function changeFormation(f){state.formation=f;state.xi=state.players.slice(0,11).map(p=>p.id);save();render()}
+function replaceXI(i,id){state.xi[i]=+id;save();render()}
+function league(){const rows=standings();document.getElementById("app").innerHTML=`<div class="card"><h2>${state.league}</h2><div class="sub">After matchday ${state.matchday}. All fixtures are simulated simultaneously.</div></div><div class="card" style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>#</th><th style="text-align:left">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead><tbody>${rows.map((r,i)=>`<tr style="border-top:1px solid var(--line);${r.club===state.club?'font-weight:800':''}"><td style="padding:8px 4px">${i+1}</td><td style="padding:8px 4px;text-align:left">${r.club}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf-r.ga}</td><td>${r.pts}</td></tr>`).join("")}</tbody></table></div><div class="card"><h3>Recent results</h3>${latestRoundHTML()}</div>`}
+function cup(){document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><p>The national cup remains in the competition structure. Its draw/round engine will be connected after the league season engine is complete.</p><button onclick="alert('Cup draw module reserved for v0.3')">View draw</button></div>`}
+function jobs(){let jobs=[["NK Čelik Zenica",58],["FK Radnik Bijeljina",55],["NK Bratstvo Gračanica",48],["FK Sarajevo",72],["FK Željezničar",71]];document.getElementById("app").innerHTML=`<div class="card"><h2>Jobs</h2><p class="sub">Your reputation: ${state.rep}. Higher reputation unlocks stronger clubs.</p>${jobs.map(j=>`<div class="club"><div style="flex:1"><b>${j[0]}</b><div class="sub">Required reputation: ${j[1]}</div></div><button ${state.rep<j[1]?'disabled':''} onclick="takeJob('${j[0]}')">Apply</button></div>`).join("")}</div>`}
+function takeJob(c){state.club=c;state.league=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";state.players=playersFor(c);state.xi=state.players.slice(0,11).map(p=>p.id);initSeason(true);state.tab="Home";save();render()}
+function transfers(){document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p>Transfer market foundation is ready. v0.3 will add verified player pools, wages, fees, loans and club budgets.</p><div class="notice">The complete matchday engine is now active: every league fixture is simulated when you play.</div></div>`}
 function resetGame(){if(confirm("Reset local career?")){localStorage.removeItem("bhfm");location.reload()}}
 initClub();render();
 </script>
