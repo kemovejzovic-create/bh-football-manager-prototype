@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d1117">
+<title>BH Football Manager Lite</title>
+<style>
+:root{--bg:#0d1117;--card:#151b23;--card2:#1b2430;--text:#f3f6f9;--muted:#9aa6b2;--accent:#4ade80;--danger:#fb7185;--line:#273241}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.app{max-width:760px;margin:auto;min-height:100vh;padding-bottom:80px}.top{position:sticky;top:0;background:rgba(13,17,23,.96);backdrop-filter:blur(10px);z-index:5;padding:14px 16px;border-bottom:1px solid var(--line)}
+h1,h2,h3{margin:0 0 8px}.sub{color:var(--muted);font-size:12px}.screen{padding:16px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}.stat{font-size:20px;font-weight:700}.label{font-size:11px;color:var(--muted);text-transform:uppercase}
+button,select{min-height:44px;border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:10px;padding:10px 12px;font-weight:600}
+button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}button.danger{background:#4c1720;border-color:#7f1d1d}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px}.tabs{display:flex;gap:6px;overflow:auto;padding:10px 16px;border-bottom:1px solid var(--line)}
+.tabs button{white-space:nowrap;min-height:42px}.tabs .on{border-color:var(--accent);color:var(--accent)}
+.club{display:flex;align-items:center;gap:10px;padding:11px;border:1px solid var(--line);border-radius:10px;margin:7px 0}
+.badge{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#263244;font-weight:800}
+.list{max-height:360px;overflow:auto}.player{display:grid;grid-template-columns:1fr 48px 48px;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.pitch{height:430px;border-radius:14px;border:2px solid #d9f99d;background:linear-gradient(#3f7d3a,#346d31);position:relative;overflow:hidden}
+.pitch:before{content:"";position:absolute;left:8%;right:8%;top:7%;bottom:7%;border:2px solid rgba(255,255,255,.7);border-radius:3px}
+.pitch:after{content:"";position:absolute;left:20%;right:20%;top:50%;border-top:2px solid rgba(255,255,255,.7)}
+.mark{position:absolute;transform:translate(-50%,-50%);text-align:center}.shirt{width:34px;height:34px;border-radius:50%;background:#f8fafc;color:#111827;display:grid;place-items:center;font-size:11px;font-weight:800;border:2px solid #111827}
+.small{font-size:11px;color:#fff;background:rgba(0,0,0,.55);padding:2px 5px;border-radius:5px;margin-top:2px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.notice{padding:10px;border-radius:10px;background:#111827;color:#cbd5e1;font-size:12px}.green{color:var(--accent)}.red{color:var(--danger)}
+.footer{position:fixed;bottom:0;left:0;right:0;background:#11161d;border-top:1px solid var(--line);padding:9px;text-align:center;color:var(--muted);font-size:11px}
+@media(min-width:700px){.footer{left:50%;right:auto;width:760px;transform:translateX(-50%)}}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.1</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
+<div class="footer">Local save • No account • No server required</div>
+</div>
+<script>
+const leagues={
+"Premijer Liga BiH":["FK Sarajevo","FK Željezničar","FK Borac Banja Luka","HŠK Zrinjski Mostar","FK Velež Mostar","NK Široki Brijeg","FK Sloga Meridian","FK Radnik Bijeljina","NK Čelik Zenica","BSK Banja Luka"],
+"Prva liga FBiH":["NK Bratstvo Gračanica","FK Igman Konjic","HNK Čapljina","FK Rudar Kakanj","NK Vitez","HNK Tomislav","FK Budućnost Banovići","NK TOŠK Tešanj","NK Zvijezda Gradačac","FK Radnik Hadžići","NK GOŠK Gabela","FK Sloboda Tuzla","NK Travnik","NK Jedinstvo Bihać","NK Stupčanica Olovo","HŠK Posušje"],
+"Prva liga RS":["TBD – official 2026/27 database loading"],
+"Druga liga FBiH":["Druga liga FBiH – Sjever","Druga liga FBiH – Centar","Druga liga FBiH – Zapad","Druga liga FBiH – Jug"],
+"Druga liga RS":["Druga liga RS – regional groups"]
+};
+
+const seedPlayers={
+"FK Sarajevo":[["GK","GK 1",70],["DEF","DEF 1",71],["DEF","DEF 2",69],["DEF","DEF 3",68],["MID","MID 1",72],["MID","MID 2",70],["MID","MID 3",69],["MID","MID 4",67],["ATT","ATT 1",73],["ATT","ATT 2",71],["ATT","ATT 3",68],["GK","GK 2",62],["DEF","DEF 4",64],["MID","MID 5",64],["ATT","ATT 4",63]],
+"FK Željezničar":[["GK","GK 1",69],["DEF","DEF 1",70],["DEF","DEF 2",68],["DEF","DEF 3",66],["MID","MID 1",71],["MID","MID 2",69],["MID","MID 3",67],["MID","MID 4",65],["ATT","ATT 1",71],["ATT","ATT 2",69],["ATT","ATT 3",67],["GK","GK 2",61],["DEF","DEF 4",63],["MID","MID 5",63],["ATT","ATT 4",62]]
+};
+const formations={
+"4-3-3":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["CM",32,52],["CM",50,47],["CM",68,52],["LW",20,27],["ST",50,18],["RW",80,27]],
+"4-4-2":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["LM",18,48],["CM",40,50],["CM",60,50],["RM",82,48],["ST",40,25],["ST",60,25]],
+"3-5-2":[["GK",50,88],["CB",30,73],["CB",50,77],["CB",70,73],["LWB",12,53],["CM",32,48],["CM",50,43],["CM",68,48],["RWB",88,53],["ST",40,24],["ST",60,24]]
+};
+let state=JSON.parse(localStorage.getItem("bhfm")||"null")||{
+club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,
+formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026
+};
+function playersFor(club){
+ if(seedPlayers[club]) return seedPlayers[club].map((x,i)=>({id:i,pos:x[0],name:x[1],ovr:x[2],age:18+(i*3)%15}));
+ return [["GK","GK 1",58],["DEF","DEF 1",58],["DEF","DEF 2",57],["DEF","DEF 3",56],["MID","MID 1",59],["MID","MID 2",57],["MID","MID 3",56],["MID","MID 4",54],["ATT","ATT 1",60],["ATT","ATT 2",57],["ATT","ATT 3",55],["GK","GK 2",52],["DEF","DEF 4",52],["MID","MID 5",51],["ATT","ATT 4",51]].map((x,i)=>({id:i,pos:x[0],name:x[1],ovr:x[2],age:18+(i*3)%15}));
+}
+function save(){localStorage.setItem("bhfm",JSON.stringify(state))}
+function initClub(){state.players=playersFor(state.club);state.xi=state.players.slice(0,11).map(p=>p.id);save()}
+function tabs(){let t=["Home","Squad & Tactics","League","Cup","Jobs","Transfers"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
+function render(){tabs();let a=document.getElementById("app");({Home:home,"Squad & Tactics":squad,League:league,Cup:cup,Jobs:jobs,Transfers:transfers}[state.tab])()}
+function home(){document.getElementById("app").innerHTML=`
+<div class="card"><div class="sub">${state.league}</div><h2>${state.club}</h2><div class="grid">
+<div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div>
+<div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">Points</div><div class="stat">${state.points}</div></div></div></div>
+<div class="card"><h3>Next fixture</h3><p>${nextOpponent()}</p><button class="primary" onclick="playMatch()">Play match</button></div>
+<div class="card"><h3>Career</h3><p class="sub">Start small, win promotion, build reputation, reach Premijer Liga and Europe. If fired, your career continues through the jobs market.</p></div>
+<div class="notice">Database status: league structure is loaded. Player names are intentionally provisional until the verified 2026/27 squad database is imported.</div>`}
+function nextOpponent(){let all=leagues[state.league].filter(x=>!x.startsWith("TBD")&&!x.includes("regional"));if(all.length<2)return"Schedule pending";let idx=(state.played+1)%all.length;return (state.played%2?"Away":"Home")+" • "+(all[idx]||all[0])}
+function squad(){if(!state.players.length)initClub();let formation=formations[state.formation];let mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||state.players[i]}));document.getElementById("app").innerHTML=`
+<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club}</div></div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div>
+<div class="pitch">${mapped.map((m,i)=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div>
+<div class="card"><h3>Starting XI</h3>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.filter(p=>p.pos==="GK"||p.pos==="DEF"||p.pos==="MID"||p.pos==="ATT").map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div>
+<div class="card"><h3>Squad</h3><div class="list">${state.players.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs</span></span><b>${p.ovr}</b><span class="sub">#${p.id+1}</span></div>`).join("")}</div></div>`}
+function changeFormation(f){state.formation=f;state.xi=state.players.slice(0,11).map(p=>p.id);save();render()}
+function replaceXI(i,id){state.xi[i]=+id;save();render()}
+function league(){let clubs=leagues[state.league];document.getElementById("app").innerHTML=`<div class="card"><h2>${state.league}</h2><div class="sub">Simplified season table — full fixtures/results engine comes next.</div></div>${clubs.map((c,i)=>`<div class="club"><div class="badge">${i+1}</div><div style="flex:1"><b>${c}</b><div class="sub">${i===0&&state.league==="Premijer Liga BiH"?"Club database loaded":"Playable league slot"}</div></div><b>${i===0?state.points:Math.max(0,Math.floor(state.points-(i*2)))}</b></div>`).join("")}`}
+function cup(){document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><p>National cup is part of the career structure. Draw and round simulation will be connected to the match engine after the league scheduler.</p><button onclick="alert('Cup draw module reserved for v0.2')">View draw</button></div>`}
+function jobs(){let jobs=[["NK Čelik Zenica",58],["FK Radnik Bijeljina",55],["NK Bratstvo Gračanica",48],["FK Sarajevo",72],["FK Željezničar",71]];document.getElementById("app").innerHTML=`<div class="card"><h2>Jobs</h2><p class="sub">Your reputation: ${state.rep}. Higher reputation unlocks stronger clubs.</p>${jobs.map(j=>`<div class="club"><div style="flex:1"><b>${j[0]}</b><div class="sub">Required reputation: ${j[1]}</div></div><button ${state.rep<j[1]?'disabled':''} onclick="takeJob('${j[0]}')">Apply</button></div>`).join("")}</div>`}
+function takeJob(c){state.club=c;state.league=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";initClub();state.tab="Home";render()}
+function transfers(){document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p>Transfer market foundation is ready. v0.2 will add verified player pools, wages, fees, loans and club budgets.</p><div class="notice">For v0.1, the priority is getting the season/match loop stable before adding a large transfer database.</div></div>`}
+function playMatch(){
+ let opp=nextOpponent(), strength=state.players.length?state.players.slice(0,11).reduce((a,p)=>a+p.ovr,0)/11:60;
+ let base=Math.max(0.15,Math.min(.85,(strength-45)/35)), r=Math.random(), win=r<base*.62, draw=!win&&r<base*.62+(1-base)*.42;
+ let gf=win?1+Math.floor(Math.random()*3):draw?Math.floor(Math.random()*2):Math.floor(Math.random()*2);
+ let ga=win?Math.floor(Math.random()*2):draw?gf:1+Math.floor(Math.random()*3);
+ state.played++; if(win){state.wins++;state.points+=3;state.rep+=2}else if(draw){state.draws++;state.points+=1;state.rep+=0}else{state.losses++;state.rep=Math.max(0,state.rep-1)}
+ state.balance+=win?15000:draw?5000:-5000; save();
+ alert(`${state.club} ${gf}–${ga} ${opp}\\n${win?"WIN":draw?"DRAW":"LOSS"}\\nReputation: ${state.rep}`);
+ render()
+}
+function resetGame(){if(confirm("Reset local career?")){localStorage.removeItem("bhfm");location.reload()}}
+initClub();render();
+</script>
+</body></html>
