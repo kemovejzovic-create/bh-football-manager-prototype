@@ -82,6 +82,12 @@ function playersFor(club){
  return names.map((n,i)=>({id:i,pos:pos[i],name:n,age:18+(i%13),ovr:52+(i%9)}));
 }
 const formations={
+"4-2-3-1":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["DM",38,58],["DM",62,58],["LW",20,38],["AM",50,32],["RW",80,38],["ST",50,18]],
+"4-1-4-1":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["DM",50,60],["LM",18,45],["CM",40,47],["CM",60,47],["RM",82,45],["ST",50,20]],
+"4-3-1-2":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["CM",30,53],["CM",50,48],["CM",70,53],["AM",50,34],["ST",38,20],["ST",62,20]],
+"3-4-3":[["GK",50,88],["CB",30,73],["CB",50,77],["CB",70,73],["LM",15,50],["CM",38,48],["CM",62,48],["RM",85,50],["LW",22,28],["ST",50,20],["RW",78,28]],
+"5-3-2":[["GK",50,88],["LWB",12,62],["CB",32,73],["CB",50,77],["CB",68,73],["RWB",88,62],["CM",32,49],["CM",50,44],["CM",68,49],["ST",40,23],["ST",60,23]],
+"5-4-1":[["GK",50,88],["LWB",12,64],["CB",32,74],["CB",50,78],["CB",68,74],["RWB",88,64],["LM",18,46],["CM",40,49],["CM",60,49],["RM",82,46],["ST",50,20]],
 "4-3-3":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["CM",32,52],["CM",50,47],["CM",68,52],["LW",20,27],["ST",50,18],["RW",80,27]],
 "4-4-2":[["GK",50,88],["LB",20,72],["CB",40,78],["CB",60,78],["RB",80,72],["LM",18,48],["CM",40,50],["CM",60,50],["RM",82,48],["ST",40,25],["ST",60,25]],
 "3-5-2":[["GK",50,88],["CB",30,73],["CB",50,77],["CB",70,73],["LWB",12,53],["CM",32,48],["CM",50,43],["CM",68,48],["RWB",88,53],["ST",40,24],["ST",60,24]]
@@ -105,9 +111,9 @@ function initSeason(force=false){
  }
 }
 function save(){localStorage.setItem("bhfm",JSON.stringify(state))}
-function initClub(){state.players=playersFor(state.club);if(!Array.isArray(state.xi)||state.xi.length!==11)state.xi=state.players.slice(0,11).map(p=>p.id);initSeason(false);save()}
-function tabs(){let t=["Home","Squad & Tactics","League","Cup","Jobs","Transfers"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
-function render(){tabs();({Home:home,"Squad & Tactics":squad,League:league,Cup:cup,Jobs:jobs,Transfers:transfers}[state.tab])()}
+function initClub(){state.players=playersFor(state.club);if(!state.cup) initCup();if(!Array.isArray(state.xi)||state.xi.length!==11)state.xi=state.players.slice(0,11).map(p=>p.id);initSeason(false);save()}
+function tabs(){let t=["Home","Squad & Tactics","League","Results","Cup","Jobs","Transfers"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
+function render(){tabs();({Home:home,"Squad & Tactics":squad,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers}[state.tab])()}
 function home(){
  const pos=standings().findIndex(x=>x.club===state.club)+1,total=leagueClubs().length*2-2;
  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}/${total}</div><h2>${state.club}</h2><div class="grid"><div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div><div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">League</div><div class="stat">#${pos||"-"} • ${state.points} pts</div></div></div></div>
@@ -121,26 +127,47 @@ function poissonish(lambda){const r=Math.random();if(r<Math.exp(-lambda))return 
 function simulateFixture(f){const diff=teamRating(f.home)+3.5-teamRating(f.away);return{home:f.home,away:f.away,hg:Math.min(poissonish(Math.max(.35,1.25+diff*.055)),6),ag:Math.min(poissonish(Math.max(.25,1.05-diff*.045)),6)}}
 function applyResult(r){const h=state.table[r.home],a=state.table[r.away];h.p++;a.p++;h.gf+=r.hg;h.ga+=r.ag;a.gf+=r.ag;a.ga+=r.hg;if(r.hg>r.ag){h.w++;h.pts+=3;a.l++}else if(r.hg<r.ag){a.w++;a.pts+=3;h.l++}else{h.d++;a.d++;h.pts++;a.pts++}}
 function standings(){return Object.values(state.table).sort((a,b)=>b.pts-a.pts||(b.gf-b.ga)-(a.gf-a.ga)||b.gf-a.gf||b.w-a.w||a.club.localeCompare(b.club))}
+function resultsPage(){
+ let html='<div class="card"><h2>Matchday Results</h2><div class="sub">Full results from every completed league matchday.</div></div>';
+ if(!state.results.length){html+='<div class="card"><div class="sub">No matches played yet.</div></div>';}
+ else{for(let i=state.results.length-1;i>=0;i--){html+=`<div class="card"><h3>Matchday ${i+1}</h3>${state.results[i].map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join('')}</div>`;}}
+ document.getElementById('app').innerHTML=html;
+}
 function latestRoundHTML(){if(!state.results.length)return'<div class="sub">No matches played yet.</div>';return state.results[state.results.length-1].map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join("")}
 function playMatch(){
  const total=leagueClubs().length*2-2;if(state.matchday>=total)return;
  const round=fixtureForRound(state.matchday),my=round.find(x=>x.home===state.club||x.away===state.club);if(!my)return;
  let results=round.map(simulateFixture),idx=results.findIndex(r=>r.home===my.home&&r.away===my.away);
  const avg=state.players.slice(0,11).reduce((a,p)=>a+p.ovr,0)/11;
- const mod=(avg-teamRating(state.club))*.025+(state.mentality==="Attacking"?.04:state.mentality==="Defensive"?-.02:0);
+ const tacticalMod={"Ultra Defensive":-.07,"Defensive":-.025,"Balanced":0,"Counter-Attack":.035,"Tiki-Taka":.025,"Attacking":.055}[state.mentality]||0;
+ const mod=(avg-teamRating(state.club))*.025+tacticalMod;
  const diff=(my.home===state.club?avg:teamRating(my.home))+3.5-(my.away===state.club?avg:teamRating(my.away));
  results[idx]={home:my.home,away:my.away,hg:Math.min(poissonish(Math.max(.35,1.25+diff*.055+mod)),6),ag:Math.min(poissonish(Math.max(.25,1.05-diff*.045-mod*.4)),6)};
  results.forEach(applyResult);state.results.push(results);state.matchday++;const r=results[idx];
  state.played++;if(r.hg>r.ag){state.wins++;state.points+=3;state.rep+=2}else if(r.hg<r.ag){state.losses++;state.rep=Math.max(0,state.rep-1)}else{state.draws++;state.points++}
  state.balance+=r.hg>r.ag?15000:r.hg===r.ag?5000:-5000;save();
- alert(`MATCHDAY ${state.matchday}\n\n${results.map(x=>`${x.home} ${x.hg}–${x.ag} ${x.away}`).join("\n")}\n\nYour result: ${state.club} ${r.hg}–${r.ag} ${r.home===state.club?r.away:r.home}`);
- render()
+ state.tab="Results";save();render()
 }
-function squad(){if(!state.players.length)initClub();let formation=formations[state.formation],mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||state.players[i]}));document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club}</div></div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div><div class="pitch">${mapped.map(m=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Squad</h3><div class="list">${state.players.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs</span></span><b>${p.ovr}</b><span class="sub">#${p.id+1}</span></div>`).join("")}</div></div>`}
+function squad(){if(!state.players.length)initClub();let formation=formations[state.formation],mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||state.players[i]}));document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club}</div></div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div><div class="pitch">${mapped.map(m=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><select onchange="state.mentality=this.value;save();render()">${["Ultra Defensive","Defensive","Balanced","Counter-Attack","Tiki-Taka","Attacking"].map(x=>`<option ${state.mentality===x?"selected":""}>${x}</option>`).join("")}</select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Squad</h3><div class="list">${state.players.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs</span></span><b>${p.ovr}</b><span class="sub">#${p.id+1}</span></div>`).join("")}</div></div>`}
 function changeFormation(f){state.formation=f;state.xi=state.players.slice(0,11).map(p=>p.id);save();render()}
 function replaceXI(i,id){state.xi[i]=+id;save();render()}
 function league(){const rows=standings();document.getElementById("app").innerHTML=`<div class="card"><h2>${state.league}</h2><div class="sub">After matchday ${state.matchday}. All fixtures are simulated simultaneously.</div></div><div class="card" style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>#</th><th style="text-align:left">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead><tbody>${rows.map((r,i)=>`<tr style="border-top:1px solid var(--line);${r.club===state.club?'font-weight:800':''}"><td style="padding:8px 4px">${i+1}</td><td style="padding:8px 4px;text-align:left">${r.club}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf-r.ga}</td><td>${r.pts}</td></tr>`).join("")}</tbody></table></div><div class="card"><h3>Recent results</h3>${latestRoundHTML()}</div>`}
-function cup(){document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><p>The national cup remains in the competition structure. Its draw/round engine will be connected after the league season engine is complete.</p><button onclick="alert('Cup draw module reserved for v0.3')">View draw</button></div>`}
+function cup(){
+ if(!state.cup||!Array.isArray(state.cup.rounds))initCup();
+ const c=state.cup; let html='<div class="card"><h2>Kup BiH</h2><div class="sub">'+(c.rounds[c.roundIndex]?.name||'Competition complete')+'</div>';
+ if(c.roundIndex<c.rounds.length) html+='<button class="primary" onclick="playCupRound()">Play round</button>';
+ html+='</div>';
+ for(let i=0;i<c.rounds.length;i++){const rd=c.rounds[i]; html+='<div class="card"><h3>'+rd.name+(i<c.roundIndex?' ✓':i===c.roundIndex?' • Current':'')+'</h3>';
+ if(rd.byes&&rd.byes.length) html+='<div class="sub" style="margin-bottom:8px">Byes: '+rd.byes.join(', ')+'</div>';
+ if(rd.matches.length){for(const m of rd.matches){html+='<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>'+m.home+(m.home===state.club?' ★':'')+'</span><b>'+(m.played?m.hg+'–'+m.ag:'vs')+'</b><span>'+m.away+(m.away===state.club?' ★':'')+'</span></div>';}} else html+='<div class="sub">Bye</div>';
+ html+='</div>';}
+ document.getElementById('app').innerHTML=html;
+}
+function cupTeams(){return [...leagues["Premijer Liga BiH"],...leagues["Prva liga FBiH"]].filter(Boolean)}
+function initCup(){let teams=cupTeams();teams=teams.sort(()=>Math.random()-.5);let byes=teams.splice(0,6);let matches=[];for(let i=0;i<teams.length;i+=2)matches.push({home:teams[i],away:teams[i+1],played:false});state.cup={roundIndex:0,rounds:[{name:"Preliminary Round",matches,byes}]};save()}
+function cupNextRound(winners,name){let matches=[];for(let i=0;i<winners.length;i+=2){if(winners[i+1])matches.push({home:winners[i],away:winners[i+1],played:false})}return {name,matches}}
+function playCupRound(){if(!state.cup||state.cup.roundIndex>=state.cup.rounds.length)return;let rd=state.cup.rounds[state.cup.roundIndex];let winners=[...(rd.byes||[])];rd.matches.forEach(m=>{let a=teamRating(m.home),b=teamRating(m.away),diff=a+3.5-b;let hg=poissonish(Math.max(.3,1.2+diff*.055)),ag=poissonish(Math.max(.25,1.0-diff*.045));if(hg===ag){if(Math.random()<.5)hg++;else ag++}m.hg=hg;m.ag=ag;m.played=true;winners.push(hg>=ag?m.home:m.away)});state.cup.roundIndex++;if(winners.length>1){let names=["Round of 16","Quarter-final","Semi-final","Final"];state.cup.rounds.push(cupNextRound(winners,names[state.cup.roundIndex-1]||"Final"))}save();render()}
+
 function jobs(){let jobs=[["NK Čelik Zenica",58],["FK Radnik Bijeljina",55],["NK Bratstvo Gračanica",48],["FK Sarajevo",72],["FK Željezničar",71]];document.getElementById("app").innerHTML=`<div class="card"><h2>Jobs</h2><p class="sub">Your reputation: ${state.rep}. Higher reputation unlocks stronger clubs.</p>${jobs.map(j=>`<div class="club"><div style="flex:1"><b>${j[0]}</b><div class="sub">Required reputation: ${j[1]}</div></div><button ${state.rep<j[1]?'disabled':''} onclick="takeJob('${j[0]}')">Apply</button></div>`).join("")}</div>`}
 function takeJob(c){state.club=c;state.league=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";state.players=playersFor(c);state.xi=state.players.slice(0,11).map(p=>p.id);initSeason(true);state.tab="Home";save();render()}
 function transfers(){document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p>Transfer market foundation is ready. v0.3 will add verified player pools, wages, fees, loans and club budgets.</p><div class="notice">The complete matchday engine is now active: every league fixture is simulated when you play.</div></div>`}
