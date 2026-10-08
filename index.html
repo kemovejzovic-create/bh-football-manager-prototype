@@ -32,7 +32,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.5 Real Data</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.6 Jobs & Transfers</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
@@ -88,7 +88,7 @@ const formations={
 };
 const TEAM_RATING={"FK Sarajevo":72,"FK Željezničar":71,"FK Borac Banja Luka":74,"HŠK Zrinjski Mostar":75,"FK Velež Mostar":68,"NK Široki Brijeg":67,"FK Sloga Meridian":62,"FK Radnik Bijeljina":59,"NK Čelik Zenica":58,"BSK Banja Luka":56};
 const DEFAULT_RATING=56;
-let state=JSON.parse(localStorage.getItem("bhfm")||"null")||{club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[]};
+let state=JSON.parse(localStorage.getItem("bhfm")||"null")||{club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[]};
 
 function teamRating(club){if(TEAM_RATING[club])return TEAM_RATING[club];const ps=playersFor(club);return Math.round(ps.reduce((a,p)=>a+p.ovr,0)/ps.length)||DEFAULT_RATING}
 function leagueClubs(){return leagues[state.league].filter(c=>!c.startsWith("TBD")&&!c.includes("regional"))}
@@ -98,10 +98,57 @@ function generateFixtures(clubs){
  for(let r=0;r<n-1;r++){let games=[];for(let i=0;i<n/2;i++){let a=arr[i],b=arr[n-1-i];games.push(r%2===0?{home:a,away:b}:{home:b,away:a})}rounds.push(games);arr=[arr[0],arr[n-1],...arr.slice(1,n-1)]}
  return [...rounds,...rounds.map(g=>g.map(x=>({home:x.away,away:x.home})))].flat()
 }
+const JOB_POOL=[
+ ["FK Sarajevo",72],["FK Željezničar",71],["FK Borac Banja Luka",70],["HŠK Zrinjski Mostar",72],["FK Velež Mostar",62],["NK Široki Brijeg",60],["FK Sloga Meridian",55],["FK Radnik Bijeljina",52],["NK Čelik Zenica",50],["BSK Banja Luka",48],
+ ["NK Bratstvo Gračanica",48],["FK Igman Konjic",47],["HNK Čapljina",42],["FK Rudar Kakanj",42],["NK Vitez",40],["HNK Tomislav",43],["FK Budućnost Banovići",40],["NK TOŠK Tešanj",44],["NK Zvijezda Gradačac",45],["FK Radnik Hadžići",42],["NK GOŠK Gabela",48],["FK Sloboda Tuzla",50],["NK Travnik",42],["NK Jedinstvo Bihać",40],["NK Stupčanica Olovo",46],["HŠK Posušje",52]
+];
+function shuffle(a){return [...a].sort(()=>Math.random()-.5)}
+function refreshJobBoard(force=false){
+ const eligible=JOB_POOL.filter(j=>j[0]!==state.club);
+ if(force||!Array.isArray(state.jobBoard)||state.jobBoardMD!==state.matchday){
+  const shuffled=shuffle(eligible);
+  const accessible=shuffled.filter(j=>j[1]<=state.rep).slice(0,3);
+  const locked=shuffled.filter(j=>j[1]>state.rep).slice(0,3);
+  let board=[...accessible,...locked];
+  if(board.length<6) board=[...board,...shuffled.filter(j=>!board.some(x=>x[0]===j[0])).slice(0,6-board.length)];
+  state.jobBoard=board.slice(0,6);state.jobBoardMD=state.matchday;
+ }
+}
+function transferStatus(){
+ const total=leagueClubs().length*2-2;
+ if(state.matchday>=total) return state.summerTick<10?{type:"summer",remaining:10-state.summerTick,label:`Summer transfer market • ${state.summerTick}/10 ticks used`}:{type:"closed",remaining:0,label:"Summer transfer market closed"};
+ const midStart=Math.max(1,Math.floor(total/2)-1),midEnd=midStart+3;
+ if(state.matchday>=midStart&&state.matchday<=midEnd) return {type:"mid",remaining:midEnd-state.matchday+1,label:`Mid-season transfer window • ${midEnd-state.matchday+1} matchday ticks remaining`};
+ return {type:"closed",remaining:0,label:`Transfer window closed • Mid-season opens at matchday ${midStart}`};
+}
+function generateTransferPool(){
+ const all=Object.keys(seedPlayers).flatMap(c=>seedPlayers[c].map((x,i)=>({id:`${c}-${i}`,club:c,pos:x[0],name:x[1],age:x[2],ovr:x[3],fee:Math.max(15000,Math.round((x[3]-45)*(x[3]-45)*900)),wage:Math.max(400,Math.round((x[3]-45)*45))})));
+ const candidates=all.filter(p=>p.club!==state.club&&p.ovr>=Math.max(55,teamRating(state.club)-6));
+ return shuffle(candidates).slice(0,24);
+}
+function ensureTransferPool(){if(!Array.isArray(state.transferPool)||!state.transferPool.length)state.transferPool=generateTransferPool()}
+function maybeGenerateJobOffer(oldRep,newRep){
+ if(newRep<=oldRep)return;
+ state.repHistory=Array.isArray(state.repHistory)?state.repHistory:[];
+ state.repHistory.push({md:state.matchday,rep:newRep});
+ state.repHistory=state.repHistory.slice(-5);
+ const recent=state.repHistory.filter(x=>x.md>=state.matchday-2);
+ const gained=recent.length?newRep-recent[0].rep:0;
+ const winsRecent=state.results.slice(-3).flat().filter(r=>r.home===state.club||r.away===state.club).filter(r=>{const g=r.home===state.club?r.hg:r.ag,o=r.home===state.club?r.ag:r.hg;return g>o}).length;
+ if(!state.jobOffers.length&&gained>=4&&winsRecent>=2){
+  const targets=JOB_POOL.filter(j=>j[0]!==state.club&&j[1]<=newRep+3).filter(j=>!state.jobBoard.some(x=>x[0]===j[0]));
+  if(targets.length){const offer=shuffle(targets)[0];state.jobOffers=[{club:offer[0],required:offer[1],expiresMD:state.matchday+3,reason:"Your reputation has risen quickly after a strong run of results."}]}
+ }
+}
+function useTransferTick(){
+ const st=transferStatus();
+ if(st.type!=="summer")return;
+ if(state.summerTick<10){state.summerTick++;state.transferPool=generateTransferPool();save();render();}
+}
 function initSeason(force=false){
  const clubs=leagueClubs(),needed=clubs.length*(clubs.length-1);
  if(force||!Array.isArray(state.fixtures)||state.fixtures.length!==needed||!state.table||Object.keys(state.table).length!==clubs.length){
-  state.matchday=0;state.fixtures=generateFixtures(clubs);state.table=makeTable();state.results=[];state.points=0;state.played=0;state.wins=0;state.draws=0;state.losses=0;
+  state.matchday=0;state.fixtures=generateFixtures(clubs);state.table=makeTable();state.results=[];state.points=0;state.played=0;state.wins=0;state.draws=0;state.losses=0;state.jobBoard=[];state.jobBoardMD=-1;state.jobOffers=[];state.repHistory=[{md:0,rep:state.rep}];state.transferTick=0;state.summerTick=0;state.transferPool=[];state.transfersDone=[];
  }
 }
 function save(){localStorage.setItem("bhfm",JSON.stringify(state))}
@@ -118,7 +165,7 @@ function home(){
  const pos=standings().findIndex(x=>x.club===state.club)+1,total=leagueClubs().length*2-2;
  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}/${total}</div><h2>${state.club}</h2><div class="grid"><div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div><div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">League</div><div class="stat">#${pos||"-"} • ${state.points} pts</div></div></div></div>
  <div class="card"><h3>Next fixture</h3><p>${nextOpponent()}</p>${state.matchday<total?'<button class="primary" onclick="playMatch()">Play matchday</button>':'<div class="notice">League season complete.</div>'}</div>
- <div class="card"><h3>Latest matchday</h3>${latestRoundHTML()}</div>
+ <div class="card"><h3>Transfer market</h3><div class="sub">${transferStatus().label}</div></div><div class="card"><h3>Latest matchday</h3>${latestRoundHTML()}</div>
  <div class="card"><h3>Real 2026/27 data</h3><p class="sub">Club/player names are sourced from current 2026/27 federation and squad listings. OVR is a game attribute, not an official player rating. Prva liga FBiH starting XIs are based on published 2026/27 match lineups.</p></div><div class="card"><h3>Season engine</h3><p class="sub">Every fixture on the matchday is simulated together. All clubs receive their points, goals and results, and the table is recalculated after every matchday.</p></div>`
 }
 function fixtureForRound(round){const n=leagueClubs().length;return state.fixtures.slice(round*n/2,(round+1)*n/2)}
@@ -141,9 +188,10 @@ function playMatch(){
  results.forEach(applyResult);state.results.push(results);state.matchday++;
  const r=results[idx], myGoals=r.home===state.club?r.hg:r.ag, oppGoals=r.home===state.club?r.ag:r.hg;
  state.played++;
- if(myGoals>oppGoals){state.wins++;state.rep+=2;state.balance+=15000}
+ const oldRep=state.rep; if(myGoals>oppGoals){state.wins++;state.rep+=2;state.balance+=15000}
  else if(myGoals<oppGoals){state.losses++;state.rep=Math.max(0,state.rep-1);state.balance-=5000}
  else{state.draws++;state.balance+=5000}
+ maybeGenerateJobOffer(oldRep,state.rep);
  const row=state.table[state.club];state.points=row?row.pts:state.points;state.wins=row?row.w:state.wins;state.draws=row?row.d:state.draws;state.losses=row?row.l:state.losses;
  save();render()
 }
@@ -166,9 +214,28 @@ function resultsPage(){
 }
 function league(){const rows=standings();document.getElementById("app").innerHTML=`<div class="card"><h2>${state.league}</h2><div class="sub">After matchday ${state.matchday}. All fixtures are simulated simultaneously.</div></div><div class="card" style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>#</th><th style="text-align:left">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead><tbody>${rows.map((r,i)=>`<tr style="border-top:1px solid var(--line);${r.club===state.club?'font-weight:800':''}"><td style="padding:8px 4px">${i+1}</td><td style="padding:8px 4px;text-align:left">${r.club}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf-r.ga}</td><td>${r.pts}</td></tr>`).join("")}</tbody></table></div><div class="card"><h3>Recent results</h3>${latestRoundHTML()}</div>`}
 function cup(){document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><p>The national cup remains in the competition structure. Its draw/round engine will be connected after the league season engine is complete.</p><button onclick="alert('Cup draw module reserved for v0.3')">View draw</button></div>`}
-function jobs(){let jobs=[["NK Čelik Zenica",58],["FK Radnik Bijeljina",55],["NK Bratstvo Gračanica",48],["FK Sarajevo",72],["FK Željezničar",71]];document.getElementById("app").innerHTML=`<div class="card"><h2>Jobs</h2><p class="sub">Your reputation: ${state.rep}. Higher reputation unlocks stronger clubs.</p>${jobs.map(j=>`<div class="club"><div style="flex:1"><b>${j[0]}</b><div class="sub">Required reputation: ${j[1]}</div></div><button ${state.rep<j[1]?'disabled':''} onclick="takeJob('${j[0]}')">Apply</button></div>`).join("")}</div>`}
-function takeJob(c){state.club=c;state.league=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";state.players=playersFor(c);state.xi=state.players.slice(0,11).map(p=>p.id);initSeason(true);state.tab="Home";save();render()}
-function transfers(){document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p>Transfer market foundation is ready. v0.3 will add verified player pools, wages, fees, loans and club budgets.</p><div class="notice">The complete matchday engine is now active: every league fixture is simulated when you play.</div></div>`}
+function jobs(){
+ refreshJobBoard(false);
+ const offers=Array.isArray(state.jobOffers)?state.jobOffers:[];
+ const activeOffers=offers.filter(o=>o.expiresMD>=state.matchday);
+ state.jobOffers=activeOffers;
+ document.getElementById("app").innerHTML=`<div class="card"><h2>Jobs</h2><p class="sub">Your reputation: ${state.rep}. Six clubs are shown each matchday; three are normally available and three require higher reputation.</p>
+ ${activeOffers.length?`<div class="notice"><b>Job offers</b>${activeOffers.map((o,i)=>`<div class="club"><div style="flex:1"><b>${o.club}</b><div class="sub">${o.reason} • Offer expires after matchday ${o.expiresMD}</div></div><button class="primary" onclick="acceptOffer(${i})">Accept offer</button></div>`).join("")}</div>`:""}
+ ${state.jobBoard.map((j,i)=>{const available=state.rep>=j[1]&&i<3;return `<div class="club"><div class="badge">${i+1}</div><div style="flex:1"><b>${j[0]}</b><div class="sub">Required reputation: ${j[1]} • ${available?'Available now':'Reputation locked'}</div></div><button ${available?'':'disabled'} onclick="takeJob('${j[0]}')">Apply</button></div>`}).join("")}</div>`
+}
+function acceptOffer(i){const offer=state.jobOffers[i];if(!offer)return;takeJob(offer.club)}
+function takeJob(c){state.club=c;state.league=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";state.players=playersFor(c);state.xi=state.players.slice(0,11).map(p=>p.id);state.jobOffers=[];initSeason(true);state.tab="Home";save();render()}
+function transfers(){
+ const st=transferStatus();
+ if(st.type!=="closed")ensureTransferPool();
+ const available=st.type!=="closed"?state.transferPool.filter(p=>p.club!==state.club):[];
+ document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p class="sub">${st.label}</p>
+ ${st.type==="mid"?`<div class="notice">Mid-season window lasts 4 matchday ticks. Player movement is currently simplified; the full AI transfer market will expand from this pool.</div>`:""}
+ ${st.type==="summer"?`<div class="notice">Summer market lasts 10 transfer ticks. Advance a tick to refresh the pool and let the market move.</div><button class="primary" onclick="useTransferTick()">Advance summer transfer tick</button>`:""}
+ ${st.type==="closed"?`<div class="notice">No transfer window is currently open. ${st.label}</div>`:""}
+ ${available.length?`<div class="list">${available.map((p,i)=>`<div class="club"><div style="flex:1"><b>${p.name}</b><div class="sub">${p.club} • ${p.pos} • ${p.age} yrs • OVR ${p.ovr}</div><div class="sub">Fee €${p.fee.toLocaleString()} • Wage €${p.wage.toLocaleString()}/mo</div></div><button onclick="buyPlayer(${i})">${state.balance>=p.fee?'Buy':'Too expensive'}</button></div>`).join("")}</div>`:`${st.type!=="closed"?'<div class="sub">No players currently match the simplified transfer pool.</div>':''}`}</div>`
+}
+function buyPlayer(i){const st=transferStatus();if(st.type==="closed")return;ensureTransferPool();const p=state.transferPool.filter(x=>x.club!==state.club)[i];if(!p||state.balance<p.fee)return;state.balance-=p.fee;state.players.push({id:Date.now(),pos:p.pos,name:p.name,age:p.age,ovr:p.ovr});state.transfersDone.push({name:p.name,from:p.club,to:state.club,fee:p.fee});state.transferPool=state.transferPool.filter(x=>x.id!==p.id);save();render()}
 function resetGame(){if(confirm("Reset local career?")){localStorage.removeItem("bhfm");location.reload()}}
 initClub();render();
 </script>
