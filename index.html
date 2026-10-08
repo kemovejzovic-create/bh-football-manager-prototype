@@ -32,7 +32,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.12 Real Prva Liga Squads</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.13 Real Prva Liga Squads</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
@@ -329,7 +329,26 @@ function normalizeXI(){
 
 function initClub(){ensureClubSquads();loadClubSquad(state.club);initSeason(false);save()}
 function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","Results","Cup","Jobs","Transfers","Season Report"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
-function render(){tabs();({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Season Report":seasonReportPage}[state.tab]||home)()}
+function ensureSeasonReady(){
+  if(state.seasonReport) return;
+  const clubs=leagueClubs();
+  const needed=(clubs.length*(clubs.length-1)*meetingsForLeague())/2;
+  const tableValid=state.table&&typeof state.table==="object"&&Object.keys(state.table).length===clubs.length;
+  const fixturesValid=Array.isArray(state.fixtures)&&state.fixtures.length===needed;
+  if(!fixturesValid||!tableValid){
+    state.fixtures=generateFixtures(clubs);
+    state.table=makeTable();
+    state.results=Array.isArray(state.results)?state.results:[];
+    if(state.matchday<0||state.matchday>seasonMatchdays()) state.matchday=0;
+    state.points=state.table[state.club]?.pts||0;
+    state.played=state.table[state.club]?.p||0;
+    state.wins=state.table[state.club]?.w||0;
+    state.draws=state.table[state.club]?.d||0;
+    state.losses=state.table[state.club]?.l||0;
+    save();
+  }
+}
+function render(){ensureSeasonReady();tabs();({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Season Report":seasonReportPage}[state.tab]||home)()}
 function home(){
  const pos=standings().findIndex(x=>x.club===state.club)+1,total=seasonMatchdays();
  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}/${total}</div><h2>${state.club}</h2><div class="grid"><div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div><div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">League</div><div class="stat">#${pos||"-"} • ${state.points} pts</div></div><div><div class="label">Squad OVR</div><div class="stat">${squadRating()}</div></div></div></div>
@@ -375,6 +394,7 @@ function playerStatsPage(){
  document.getElementById("app").innerHTML=`<div class="card"><h2>Player Stats</h2><p class="sub">2026/27 season • League statistics. Cup statistics will use the same system.</p></div><div class="card"><h3>${state.club}</h3><div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th style="text-align:left">Player</th><th>Pos</th><th>App</th><th>G</th><th>A</th><th>CS</th><th>Min</th></tr></thead><tbody>${mine.map(p=>`<tr style="border-top:1px solid var(--line)"><td style="padding:8px 3px;text-align:left"><b>${p.name}</b></td><td>${p.pos}</td><td>${p.apps}</td><td>${p.goals}</td><td>${p.assists}</td><td>${p.cleanSheets}</td><td>${p.minutes}</td></tr>`).join("")}</tbody></table></div></div><div class="card"><h3>League Top Scorers</h3>${scorers.map((p,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${i+1}. ${p.name}<br><span class="sub">${p.club}</span></span><b>${p.goals} G • ${p.assists} A</b></div>`).join("")||'<div class="sub">No statistics recorded yet.</div>'}</div>`;
 }
 function playMatch(){
+ ensureSeasonReady();
  const total=seasonMatchdays();if(state.matchday>=total)return;
  normalizeXI();
  const round=fixtureForRound(state.matchday),my=round.find(x=>x.home===state.club||x.away===state.club);if(!my)return;
@@ -403,7 +423,7 @@ function squad(){
  document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div></div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div><div class="pitch">${mapped.map(m=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?`<div class="list">${bench.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs</span></span><b>${p.ovr}</b><span class="sub">BENCH</span></div>`).join("")}</div>`:`<div class="notice">No additional verified squad players are loaded for this club yet.</div>`}</div><div class="card"><h3>Squad</h3><div class="list">${state.players.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs</span></span><b>${p.ovr}</b><button class="danger" onclick="sellPlayer(${JSON.stringify(p.id)})" ${state.players.length<=11?"disabled":""}>Sell</button></div>`).join("")}</div></div>`}
 function changeFormation(f){state.formation=f;normalizeXI();save();render()}
 function replaceXI(i,id){
- normalizeXI(); id=+id;
+ normalizeXI(); id=String(id);
  const current=state.xi[i], other=state.xi.indexOf(id);
  if(other>=0 && other!==i){state.xi[other]=current;state.xi[i]=id}
  else if(state.players.some(p=>p.id===id)){state.xi[i]=id}
