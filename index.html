@@ -32,7 +32,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.15 Real Prva Liga Squads</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.16 Real Prva Liga Squads</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
@@ -130,7 +130,7 @@ const formations={
 };
 const TEAM_RATING={"FK Sarajevo":72,"FK Željezničar":71,"FK Borac Banja Luka":74,"HŠK Zrinjski Mostar":75,"FK Velež Mostar":68,"NK Široki Brijeg":67,"FK Sloga Meridian":62,"FK Radnik Bijeljina":59,"NK Čelik Zenica":58,"BSK Banja Luka":56};
 const DEFAULT_RATING=56;
-let state=JSON.parse(localStorage.getItem("bhfm")||"null")||{club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},transferSort:"position"};
+let state=JSON.parse(localStorage.getItem("bhfm")||"null")||{club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},transferSort:"position",lastMatch:null};
 
 function clonePlayer(p){return {...p};}
 function seedSquadForClub(club){return playersFor(club).map((p,i)=>({...p,id:`${club}::${i}`}));}
@@ -339,7 +339,7 @@ function seasonReportPage(){
 function initSeason(force=false){
  const clubs=leagueClubs(),needed=(clubs.length*(clubs.length-1)*meetingsForLeague())/2;
  if(force||!Array.isArray(state.fixtures)||state.fixtures.length!==needed||!state.table||Object.keys(state.table).length!==clubs.length){
-  state.matchday=0;state.fixtures=generateFixtures(clubs);state.table=makeTable();state.results=[];state.points=0;state.played=0;state.wins=0;state.draws=0;state.losses=0;state.jobBoard=[];state.jobBoardMD=-1;state.jobOffers=[];state.repHistory=[{md:0,rep:state.rep}];state.transferTick=0;state.summerTick=0;state.transferPool=[];state.transfersDone=[];state.cup=null;state.playerStats={};state.seasonReport=null;
+  state.matchday=0;state.fixtures=generateFixtures(clubs);state.table=makeTable();state.results=[];state.lastMatch=null;state.points=0;state.played=0;state.wins=0;state.draws=0;state.losses=0;state.lastMatch=null;state.jobBoard=[];state.jobBoardMD=-1;state.jobOffers=[];state.repHistory=[{md:0,rep:state.rep}];state.transferTick=0;state.summerTick=0;state.transferPool=[];state.transfersDone=[];state.cup=null;state.playerStats={};state.seasonReport=null;
  }
  initPlayerStats();
 }
@@ -352,7 +352,7 @@ function normalizeXI(){
 }
 
 function initClub(){ensureClubSquads();loadClubSquad(state.club);initSeason(false);save()}
-function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","Results","Cup","Jobs","Transfers","Season Report"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
+function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","Results","Cup","Jobs","Transfers","Match Report","Season Report"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
 function ensureSeasonReady(){
   if(state.seasonReport) return;
   const clubs=leagueClubs();
@@ -376,7 +376,7 @@ function render(){
  ensureSeasonReady();
  if(state.matchday>=seasonMatchdays()&&!state.seasonReport){ finishSeason(); return; }
  tabs();
- ({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Season Report":seasonReportPage}[state.tab]||home)();
+ ({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Match Report":matchReportPage,"Season Report":seasonReportPage}[state.tab]||home)();
 }
 function home(){
  const pos=standings().findIndex(x=>x.club===state.club)+1,total=seasonMatchdays();
@@ -408,8 +408,132 @@ function weightedPlayer(players){
  const weights=players.map(p=>p.pos==="ATT"?5:p.pos==="MID"?3:p.pos==="DEF"?1.5:.4);let total=weights.reduce((a,b)=>a+b,0),r=Math.random()*total;
  for(let i=0;i<players.length;i++){r-=weights[i];if(r<=0)return players[i]}return players[players.length-1];
 }
+
+function pickPlayer(players, weights){
+ const pool=players.filter(Boolean); if(!pool.length)return null;
+ const w=pool.map(p=>weights?.[p.pos]||1), total=w.reduce((a,b)=>a+b,0);
+ let r=Math.random()*total;
+ for(let i=0;i<pool.length;i++){r-=w[i];if(r<=0)return pool[i]}
+ return pool[pool.length-1];
+}
+function matchMinute(existing){
+ let m=1+Math.floor(Math.random()*90);
+ while(existing.includes(m))m=1+Math.floor(Math.random()*90);
+ return m;
+}
+function generateMatchReport(r){
+ const homeXI=lineupForStats(r.home), awayXI=lineupForStats(r.away);
+ const events=[], usedMinutes=[];
+ const add=(minute,type,text,team,player)=>events.push({minute,type,text,team:team||null,player:player?player.name:null});
+ const homeScorers=[], awayScorers=[];
+ const score=[0,0];
+
+ for(let i=0;i<r.hg;i++){
+   const p=pickPlayer(homeXI,{ATT:5,MID:3,DEF:1.5,GK:.2})||homeXI[0];
+   const aPool=homeXI.filter(x=>x&&x.id!==p.id);
+   const a=Math.random()<.82?pickPlayer(aPool,{ATT:3,MID:4,DEF:1.2,GK:.2}):null;
+   const minute=matchMinute(usedMinutes);usedMinutes.push(minute);
+   score[0]++;
+   homeScorers.push({player:p,assist:a,minute});
+   add(minute,"goal",`${p.name} scores for ${r.home}${a?` after a pass from ${a.name}`:""}.`,r.home,p);
+ }
+ for(let i=0;i<r.ag;i++){
+   const p=pickPlayer(awayXI,{ATT:5,MID:3,DEF:1.5,GK:.2})||awayXI[0];
+   const aPool=awayXI.filter(x=>x&&x.id!==p.id);
+   const a=Math.random()<.82?pickPlayer(aPool,{ATT:3,MID:4,DEF:1.2,GK:.2}):null;
+   const minute=matchMinute(usedMinutes);usedMinutes.push(minute);
+   score[1]++;
+   awayScorers.push({player:p,assist:a,minute});
+   add(minute,"goal",`${p.name} scores for ${r.away}${a?` after a pass from ${a.name}`:""}.`,r.away,p);
+ }
+
+ // 2–5 cards, weighted toward midfield/defenders.
+ const cardCount=Math.floor(Math.random()*4);
+ const allPlayers=[...homeXI,...awayXI];
+ for(let i=0;i<cardCount;i++){
+   const p=pickPlayer(allPlayers,{ATT:.7,MID:2.2,DEF:2.8,GK:.5}); if(!p)continue;
+   const team=homeXI.some(x=>x.id===p.id)?r.home:r.away;
+   const minute=matchMinute(usedMinutes);usedMinutes.push(minute);
+   const straightRed=Math.random()<.055;
+   add(minute,straightRed?"red":"yellow",
+     straightRed?`${p.name} is sent off after a serious challenge.`:`${p.name} is booked.`,
+     team,p);
+ }
+
+ // Match texture: chances, saves and pressure events.
+ const texture=5+Math.floor(Math.random()*6);
+ for(let i=0;i<texture;i++){
+   const minute=matchMinute(usedMinutes);usedMinutes.push(minute);
+   const homeEvent=Math.random()<.5;
+   const team=homeEvent?r.home:r.away;
+   const lineup=homeEvent?homeXI:awayXI;
+   const attacker=pickPlayer(lineup,{ATT:5,MID:3,DEF:1,GK:.2});
+   const keeperLineup=homeEvent?awayXI:homeXI;
+   const keeper=keeperLineup.find(p=>p.pos==="GK")||keeperLineup.find(p=>p.pos==="DEF");
+   const roll=Math.random();
+   if(roll<.45){
+     add(minute,"chance",`${attacker?.name||"The attack"} creates a dangerous chance for ${team}.`,team,attacker);
+   }else if(roll<.70){
+     add(minute,"shot",`${attacker?.name||"The attacker"} fires just wide.`,team,attacker);
+   }else{
+     add(minute,"save",`${keeper?.name||"The goalkeeper"} makes a good save to keep ${team===r.home?r.away:r.home} in the match.`,team,keeper);
+   }
+ }
+
+ // Halftime / full-time markers.
+ add(45,"half","Half-time.",null,null);
+ add(90,"full",`Full-time: ${r.home} ${r.hg}–${r.ag} ${r.away}.`,null,null);
+ events.sort((a,b)=>a.minute-b.minute || (a.type==="half"?-1:a.type==="full"?1:0));
+
+ const shotsHome=Math.max(r.hg+2,Math.floor(7+Math.random()*9));
+ const shotsAway=Math.max(r.ag+2,Math.floor(7+Math.random()*9));
+ const onHome=Math.min(shotsHome,Math.max(r.hg,Math.floor(2+Math.random()*5)));
+ const onAway=Math.min(shotsAway,Math.max(r.ag,Math.floor(2+Math.random()*5)));
+ return {
+   ...r,
+   events,
+   homeScorers,awayScorers,
+   stats:{
+     possession:[Math.max(35,Math.min(65,50+Math.floor(Math.random()*13)-6)),0],
+     shots:[shotsHome,shotsAway],
+     shotsOnTarget:[onHome,onAway],
+     corners:[Math.floor(Math.random()*8),Math.floor(Math.random()*8)]
+   }
+ };
+}
+function updatePlayerStatsFromReport(report){
+ const sides=[[report.home,lineupForStats(report.home),report.homeScorers,report.ag],[report.away,lineupForStats(report.away),report.awayScorers,report.hg]];
+ sides.forEach(([club,lineup,scorers,conceded])=>{
+   if(!lineup.length)return;
+   lineup.forEach(p=>{
+     const k=statKey(club,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,p);
+     state.playerStats[k].apps++;state.playerStats[k].starts++;state.playerStats[k].minutes+=90;
+   });
+   scorers.forEach(x=>{
+     const k=statKey(club,x.player);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,x.player);
+     state.playerStats[k].goals++;
+     if(x.assist){
+       const ak=statKey(club,x.assist);if(!state.playerStats[ak])state.playerStats[ak]=blankPlayerStat(club,x.assist);
+       state.playerStats[ak].assists++;
+     }
+   });
+   if(conceded===0)lineup.filter(p=>p.pos==="GK"||p.pos==="DEF").forEach(p=>{
+     const k=statKey(club,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,p);
+     state.playerStats[k].cleanSheets++;
+   });
+ });
+ report.events.forEach(e=>{
+   if(!e.player||!e.team||!["yellow","red"].includes(e.type))return;
+   const p=(e.team===state.club?state.players:state.clubSquads[e.team]||[]).find(x=>x.name===e.player);
+   if(!p)return;
+   const k=statKey(e.team,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(e.team,p);
+   if(e.type==="yellow")state.playerStats[k].yellows++;
+   else state.playerStats[k].reds++;
+ });
+}
 function updateTeamPlayerStats(club,goals,conceded){
- const lineup=lineupForStats(club);if(!lineup.length)return;
+ // Kept for Cup compatibility; league matches use the event-driven engine above.
+ const lineup=lineupForStats(club);if(!lineup.length)return [];
  lineup.forEach(p=>{const k=statKey(club,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,p);const st=state.playerStats[k];st.apps++;st.starts++;st.minutes+=90;});
  const scorers=[];for(let i=0;i<goals;i++){const scorer=weightedPlayer(lineup);if(!scorer)continue;const st=state.playerStats[statKey(club,scorer)];st.goals++;scorers.push(scorer);const assistPool=lineup.filter(p=>p.id!==scorer.id);if(assistPool.length&&Math.random()<.82){const assister=weightedPlayer(assistPool);if(assister)state.playerStats[statKey(club,assister)].assists++}}
  if(conceded===0)lineup.filter(p=>p.pos==="GK"||p.pos==="DEF").forEach(p=>state.playerStats[statKey(club,p)].cleanSheets++);
@@ -430,20 +554,53 @@ function playMatch(){
  let results=round.map(simulateFixture),idx=results.findIndex(r=>r.home===my.home&&r.away===my.away);
  const starters=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
  const avg=starters.length?starters.reduce((a,p)=>a+p.ovr,0)/starters.length:teamRating(state.club);
- const mod=(avg-teamRating(state.club))*.025+(state.mentality==="Attacking"?.04:state.mentality==="Defensive"?-.02:0);
+ const mod=(avg-teamRating(state.club))*.025+
+   (state.mentality==="Attacking"?.04:
+   state.mentality==="Defensive"?-.02:
+   state.mentality==="Ultra Defensive"?-.035:
+   state.mentality==="Counter-Attack"?.025:
+   state.mentality==="Tiki-Taka"?.02:0);
  const diff=(my.home===state.club?avg:teamRating(my.home))+3.5-(my.away===state.club?avg:teamRating(my.away));
  results[idx]={home:my.home,away:my.away,hg:Math.min(poissonish(Math.max(.35,1.25+diff*.055+mod)),6),ag:Math.min(poissonish(Math.max(.25,1.05-diff*.045-mod*.4)),6)};
- results.forEach(updatePlayerStatsForResult);
- results.forEach(applyResult);state.results.push(results);state.matchday++;
+ const report=generateMatchReport(results[idx]);
+ updatePlayerStatsFromReport(report);
+ results.forEach((x,i)=>{if(i!==idx)updatePlayerStatsForResult(x);applyResult(x)});
+ state.results.push(results);state.lastMatch=report;state.matchday++;
  const r=results[idx], myGoals=r.home===state.club?r.hg:r.ag, oppGoals=r.home===state.club?r.ag:r.hg;
  state.played++;
- const oldRep=state.rep; if(myGoals>oppGoals){state.wins++;state.rep+=2;state.balance+=15000}
+ const oldRep=state.rep;
+ if(myGoals>oppGoals){state.wins++;state.rep+=2;state.balance+=15000}
  else if(myGoals<oppGoals){state.losses++;state.rep=Math.max(0,state.rep-1);state.balance-=5000}
  else{state.draws++;state.balance+=5000}
  maybeGenerateJobOffer(oldRep,state.rep);
  const row=state.table[state.club];state.points=row?row.pts:state.points;state.wins=row?row.w:state.wins;state.draws=row?row.d:state.draws;state.losses=row?row.l:state.losses;
- if(state.matchday>=total){ save(); finishSeason(); return; }
- save();render()
+ if(state.matchday>=total){save();finishSeason();return}
+ save();state.tab="Match Report";render();
+}
+function matchReportPage(){
+ const m=state.lastMatch;
+ if(!m){document.getElementById("app").innerHTML='<div class="card"><h2>Match Report</h2><div class="sub">Play a match to generate a detailed match report.</div></div>';return}
+ const isHome=m.home===state.club, myScore=isHome?m.hg:m.ag, oppScore=isHome?m.ag:m.hg;
+ const events=m.events.map(e=>{
+   const label=e.minute===45?"45'":e.minute===90?"90'":`${e.minute}'`;
+   const icon=e.type==="goal"?"⚽":e.type==="yellow"?"🟨":e.type==="red"?"🟥":e.type==="save"?"🧤":e.type==="chance"?"🔥":e.type==="shot"?"🎯":e.type==="half"?"⏸️":"🏁";
+   return `<div class="row" style="padding:9px 0;border-bottom:1px solid var(--line);align-items:flex-start"><b style="min-width:42px">${label}</b><span>${icon} ${e.text}</span></div>`;
+ }).join("");
+ const sh=m.stats;
+ const homePoss=sh.possession[0], awayPoss=100-homePoss;
+ document.getElementById("app").innerHTML=`
+ <div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}</div>
+ <h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2>
+ <p style="text-align:center" class="sub">${myScore>oppScore?"🏆 Victory":myScore<oppScore?"Defeat":"Draw"} • ${state.mentality}</p></div>
+ <div class="card"><h3>Match timeline</h3>${events}</div>
+ <div class="card"><h3>Match statistics</h3>
+ <div class="row"><span>Possession</span><b>${homePoss}% — ${awayPoss}%</b></div>
+ <div class="row"><span>Shots</span><b>${sh.shots[0]} — ${sh.shots[1]}</b></div>
+ <div class="row"><span>Shots on target</span><b>${sh.shotsOnTarget[0]} — ${sh.shotsOnTarget[1]}</b></div>
+ <div class="row"><span>Corners</span><b>${sh.corners[0]} — ${sh.corners[1]}</b></div></div>
+ <div class="card"><h3>Scorers</h3>
+ ${[...m.homeScorers.map(x=>`<div class="row"><span>${x.minute}' ${x.player.name}</span><span>${m.home}</span></div>`),...m.awayScorers.map(x=>`<div class="row"><span>${x.minute}' ${x.player.name}</span><span>${m.away}</span></div>`)].join("")||'<div class="sub">No goals.</div>'}</div>
+ <div class="card"><button class="primary" onclick="state.tab='Home';save();render()">Continue</button> <button onclick="state.tab='Results';save();render()">View results</button></div>`;
 }
 function squad(){
  if(!state.players.length)initClub(); normalizeXI();
