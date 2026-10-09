@@ -32,7 +32,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.16 Real Prva Liga Squads</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.18 Competition Stats</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
@@ -130,7 +130,47 @@ const formations={
 };
 const TEAM_RATING={"FK Sarajevo":72,"FK Željezničar":71,"FK Borac Banja Luka":74,"HŠK Zrinjski Mostar":75,"FK Velež Mostar":68,"NK Široki Brijeg":67,"FK Sloga Meridian":62,"FK Radnik Bijeljina":59,"NK Čelik Zenica":58,"BSK Banja Luka":56};
 const DEFAULT_RATING=56;
-let state=JSON.parse(localStorage.getItem("bhfm")||"null")||{club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},transferSort:"position",lastMatch:null};
+const SAVE_KEY="bhfm";
+const SAVE_BACKUP_KEY="bhfm_backup";
+const SAVE_VERSION=2;
+const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},transferSort:"position",statsCompetition:"league",lastMatch:null,saveVersion:SAVE_VERSION};
+function isObject(value){return !!value&&typeof value==="object"&&!Array.isArray(value)}
+function normalizeSavedState(raw){
+ if(!isObject(raw))return null;
+ if(!("club" in raw)&&!("season" in raw)&&!("players" in raw))return null;
+ const merged={...JSON.parse(JSON.stringify(DEFAULT_STATE)),...raw};
+ const arrayKeys=["players","xi","fixtures","results","jobBoard","jobOffers","repHistory","transferPool","transfersDone","seasonHistory"];
+ for(const key of arrayKeys)if(!Array.isArray(merged[key]))merged[key]=[];
+ const objectKeys=["table","playerStats","clubSquads"];
+ for(const key of objectKeys)if(!isObject(merged[key]))merged[key]={};
+ if(!Number.isFinite(Number(merged.season))||Number(merged.season)<2026)merged.season=2026;
+ merged.season=Math.floor(Number(merged.season));
+ if(!Number.isFinite(Number(merged.matchday))||Number(merged.matchday)<0)merged.matchday=0;
+ merged.matchday=Math.floor(Number(merged.matchday));
+ for(const key of ["rep","balance","points","played","wins","draws","losses","transferTick","summerTick"])if(!Number.isFinite(Number(merged[key])))merged[key]=DEFAULT_STATE[key];
+ if(typeof merged.club!=="string"||!merged.club)merged.club=DEFAULT_STATE.club;
+ if(typeof merged.league!=="string"||!leagues[merged.league])merged.league=Object.keys(leagues).find(l=>leagues[l].includes(merged.club))||DEFAULT_STATE.league;
+ if(!formations[merged.formation])merged.formation=DEFAULT_STATE.formation;
+ if(typeof merged.mentality!=="string")merged.mentality=DEFAULT_STATE.mentality;
+ if(typeof merged.tab!=="string")merged.tab=DEFAULT_STATE.tab;
+ if(!["league","cup","all"].includes(merged.statsCompetition))merged.statsCompetition="league";
+ if(!isObject(merged.seasonReport)&&merged.seasonReport!==null)merged.seasonReport=null;
+ merged.saveVersion=SAVE_VERSION;
+ return merged;
+}
+function readSave(key){
+ try{const raw=localStorage.getItem(key);if(!raw)return null;return normalizeSavedState(JSON.parse(raw));}catch(e){return null;}
+}
+function loadInitialState(){
+ try{
+  const primary=readSave(SAVE_KEY);
+  if(primary)return primary;
+  const backup=readSave(SAVE_BACKUP_KEY);
+  if(backup){window.__bhfmSaveRecovered=true;return backup;}
+ }catch(e){}
+ return JSON.parse(JSON.stringify(DEFAULT_STATE));
+}
+let state=loadInitialState();
 
 function clonePlayer(p){return {...p};}
 function seedSquadForClub(club){return playersFor(club).map((p,i)=>({...p,id:`${club}::${i}`}));}
@@ -236,7 +276,7 @@ function playerValue(p){return Math.max(5000,Math.round((p.ovr-40)*(p.ovr-40)*70
 function developPlayersAtSeasonEnd(){
  const changes=[];
  state.players.forEach(p=>{
-  const stat=state.playerStats[statKey(state.club,p)]||blankPlayerStat(state.club,p);
+  const stat=state.playerStats[statKey(state.club,p,"league")]||blankPlayerStat(state.club,p,"league");
   const old=p.ovr;
   let delta=0;
   if(p.age<=21) delta=Math.random()<0.78?1:Math.random()<0.18?-1:0;
@@ -265,7 +305,7 @@ function buildSeasonReport(development,retired,squadStart){
  const tableRow=state.table[state.club];
  const pos=standings().findIndex(x=>x.club===state.club)+1;
  const leaguePrize=leagueReward(pos);
- const stats=Object.values(state.playerStats).filter(x=>x.club===state.club);
+ const stats=Object.values(state.playerStats).filter(x=>x.club===state.club&&(!x.competition||x.competition==="league"));
  const topScorer=[...stats].sort((a,b)=>b.goals-a.goals||b.assists-a.assists)[0];
  const topAssist=[...stats].sort((a,b)=>b.assists-a.assists||b.goals-a.goals)[0];
  const bestDev=[...development].sort((a,b)=>b.delta-a.delta)[0];
@@ -343,7 +383,20 @@ function initSeason(force=false){
  }
  initPlayerStats();
 }
-function save(){localStorage.setItem("bhfm",JSON.stringify(state))}
+function save(){
+ try{
+  const existing=localStorage.getItem(SAVE_KEY);
+  if(existing){try{const parsed=JSON.parse(existing);if(normalizeSavedState(parsed))localStorage.setItem(SAVE_BACKUP_KEY,existing);}catch(e){/* Never replace a good backup with corrupt data. */}}
+  state.saveVersion=SAVE_VERSION;
+  localStorage.setItem(SAVE_KEY,JSON.stringify(state));
+  state.saveError=false;
+  return true;
+ }catch(e){
+  state.saveError=true;
+  console.error("BHFM save failed; browser storage may be full or unavailable.",e);
+  return false;
+ }
+}
 function normalizeXI(){
  const valid=state.players.map(p=>p.id), seen=new Set(), out=[];
  (Array.isArray(state.xi)?state.xi:[]).forEach(id=>{if(valid.includes(id)&&!seen.has(id)){seen.add(id);out.push(id)}});
@@ -392,12 +445,23 @@ function simulateFixture(f){const diff=teamRating(f.home)+3.5-teamRating(f.away)
 function applyResult(r){const h=state.table[r.home],a=state.table[r.away];h.p++;a.p++;h.gf+=r.hg;h.ga+=r.ag;a.gf+=r.ag;a.ga+=r.hg;if(r.hg>r.ag){h.w++;h.pts+=3;a.l++}else if(r.hg<r.ag){a.w++;a.pts+=3;h.l++}else{h.d++;a.d++;h.pts++;a.pts++}}
 function standings(){return Object.values(state.table).sort((a,b)=>b.pts-a.pts||(b.gf-b.ga)-(a.gf-a.ga)||b.gf-a.gf||b.w-a.w||a.club.localeCompare(b.club))}
 function latestRoundHTML(){if(!state.results.length)return'<div class="sub">No matches played yet.</div>';return state.results[state.results.length-1].map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join("")}
-function statKey(club,p){return `${club}::${p.id}`}
-function blankPlayerStat(club,p){return{club,id:p.id,name:p.name,pos:p.pos,age:p.age,ovr:p.ovr,apps:0,starts:0,goals:0,assists:0,cleanSheets:0,minutes:0,yellows:0,reds:0}}
+function statKey(club,p,competition="league"){return `${competition}::${club}::${p.id}`}
+function blankPlayerStat(club,p,competition="league"){return{competition,club,id:p.id,name:p.name,pos:p.pos,age:p.age,ovr:p.ovr,apps:0,starts:0,goals:0,assists:0,cleanSheets:0,minutes:0,yellows:0,reds:0}}
 function initPlayerStats(){
  if(!state.playerStats||typeof state.playerStats!=="object")state.playerStats={};
- ensureClubSquads(); leagueClubs().forEach(c=>(state.clubSquads[c]||[]).forEach(p=>{const k=statKey(c,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(c,p)}));
- (state.players||[]).forEach(p=>{const k=statKey(state.club,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(state.club,p)});
+ // Migrate pre-v0.18 keys to league stats without discarding existing career saves.
+ Object.entries(state.playerStats).forEach(([key,st])=>{
+   if(!st||typeof st!=="object") {delete state.playerStats[key];return;}
+   if(!st.competition){
+     const prefixed=key.startsWith("league::")||key.startsWith("cup::");
+     st.competition=key.startsWith("cup::")?"cup":"league";
+     if(!prefixed&&key.includes("::"))state.playerStats[`league::${key}`]=st;
+     else if(!prefixed){delete state.playerStats[key];return;}
+     if(!prefixed)delete state.playerStats[key];
+   }
+ });
+ ensureClubSquads(); leagueClubs().forEach(c=>(state.clubSquads[c]||[]).forEach(p=>{const k=statKey(c,p,"league");if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(c,p,"league")}));
+ (state.players||[]).forEach(p=>{const k=statKey(state.club,p,"league");if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(state.club,p,"league")});
 }
 function lineupForStats(club){
  if(club===state.club){normalizeXI();return state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).slice(0,11)}
@@ -501,24 +565,24 @@ function generateMatchReport(r){
    }
  };
 }
-function updatePlayerStatsFromReport(report){
+function updatePlayerStatsFromReport(report,competition="league"){
  const sides=[[report.home,lineupForStats(report.home),report.homeScorers,report.ag],[report.away,lineupForStats(report.away),report.awayScorers,report.hg]];
  sides.forEach(([club,lineup,scorers,conceded])=>{
    if(!lineup.length)return;
    lineup.forEach(p=>{
-     const k=statKey(club,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,p);
+     const k=statKey(club,p,competition);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,p,competition);
      state.playerStats[k].apps++;state.playerStats[k].starts++;state.playerStats[k].minutes+=90;
    });
    scorers.forEach(x=>{
-     const k=statKey(club,x.player);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,x.player);
+     const k=statKey(club,x.player,competition);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,x.player,competition);
      state.playerStats[k].goals++;
      if(x.assist){
-       const ak=statKey(club,x.assist);if(!state.playerStats[ak])state.playerStats[ak]=blankPlayerStat(club,x.assist);
+       const ak=statKey(club,x.assist,competition);if(!state.playerStats[ak])state.playerStats[ak]=blankPlayerStat(club,x.assist,competition);
        state.playerStats[ak].assists++;
      }
    });
    if(conceded===0)lineup.filter(p=>p.pos==="GK"||p.pos==="DEF").forEach(p=>{
-     const k=statKey(club,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,p);
+     const k=statKey(club,p,competition);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,p,competition);
      state.playerStats[k].cleanSheets++;
    });
  });
@@ -526,25 +590,30 @@ function updatePlayerStatsFromReport(report){
    if(!e.player||!e.team||!["yellow","red"].includes(e.type))return;
    const p=(e.team===state.club?state.players:state.clubSquads[e.team]||[]).find(x=>x.name===e.player);
    if(!p)return;
-   const k=statKey(e.team,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(e.team,p);
+   const k=statKey(e.team,p,competition);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(e.team,p,competition);
    if(e.type==="yellow")state.playerStats[k].yellows++;
    else state.playerStats[k].reds++;
  });
 }
-function updateTeamPlayerStats(club,goals,conceded){
- // Kept for Cup compatibility; league matches use the event-driven engine above.
+function updateTeamPlayerStats(club,goals,conceded,competition="league"){
+ // Used for simulated AI league matches and cup matches; stats are kept separate by competition.
  const lineup=lineupForStats(club);if(!lineup.length)return [];
- lineup.forEach(p=>{const k=statKey(club,p);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,p);const st=state.playerStats[k];st.apps++;st.starts++;st.minutes+=90;});
- const scorers=[];for(let i=0;i<goals;i++){const scorer=weightedPlayer(lineup);if(!scorer)continue;const st=state.playerStats[statKey(club,scorer)];st.goals++;scorers.push(scorer);const assistPool=lineup.filter(p=>p.id!==scorer.id);if(assistPool.length&&Math.random()<.82){const assister=weightedPlayer(assistPool);if(assister)state.playerStats[statKey(club,assister)].assists++}}
- if(conceded===0)lineup.filter(p=>p.pos==="GK"||p.pos==="DEF").forEach(p=>state.playerStats[statKey(club,p)].cleanSheets++);
+ lineup.forEach(p=>{const k=statKey(club,p,competition);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,p,competition);const st=state.playerStats[k];st.apps++;st.starts++;st.minutes+=90;});
+ const scorers=[];for(let i=0;i<goals;i++){const scorer=weightedPlayer(lineup);if(!scorer)continue;const st=state.playerStats[statKey(club,scorer,competition)];st.goals++;scorers.push(scorer);const assistPool=lineup.filter(p=>p.id!==scorer.id);if(assistPool.length&&Math.random()<.82){const assister=weightedPlayer(assistPool);if(assister)state.playerStats[statKey(club,assister,competition)].assists++}}
+ if(conceded===0)lineup.filter(p=>p.pos==="GK"||p.pos==="DEF").forEach(p=>state.playerStats[statKey(club,p,competition)].cleanSheets++);
  return scorers;
 }
-function updatePlayerStatsForResult(r){updateTeamPlayerStats(r.home,r.hg,r.ag);updateTeamPlayerStats(r.away,r.ag,r.hg)}
+function updatePlayerStatsForResult(r,competition="league"){updateTeamPlayerStats(r.home,r.hg,r.ag,competition);updateTeamPlayerStats(r.away,r.ag,r.hg,competition)}
 function playerStatsPage(){
  initPlayerStats();
- const mine=Object.values(state.playerStats).filter(x=>x.club===state.club).sort((a,b)=>b.goals-a.goals||b.assists-a.assists||b.apps-a.apps);
- const scorers=Object.values(state.playerStats).sort((a,b)=>b.goals-a.goals||b.assists-a.assists).slice(0,10);
- document.getElementById("app").innerHTML=`<div class="card"><h2>Player Stats</h2><p class="sub">2026/27 season • League statistics. Cup statistics will use the same system.</p></div><div class="card"><h3>${state.club}</h3><div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th style="text-align:left">Player</th><th>Pos</th><th>App</th><th>G</th><th>A</th><th>CS</th><th>Min</th></tr></thead><tbody>${mine.map(p=>`<tr style="border-top:1px solid var(--line)"><td style="padding:8px 3px;text-align:left"><b>${p.name}</b></td><td>${p.pos}</td><td>${p.apps}</td><td>${p.goals}</td><td>${p.assists}</td><td>${p.cleanSheets}</td><td>${p.minutes}</td></tr>`).join("")}</tbody></table></div></div><div class="card"><h3>League Top Scorers</h3>${scorers.map((p,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${i+1}. ${p.name}<br><span class="sub">${p.club}</span></span><b>${p.goals} G • ${p.assists} A</b></div>`).join("")||'<div class="sub">No statistics recorded yet.</div>'}</div>`;
+ const competition=state.statsCompetition||"league";
+ const all=Object.values(state.playerStats).filter(x=>competition==="all"||x.competition===competition);
+ const aggregate=list=>{const grouped={};list.forEach(x=>{const k=`${x.club}::${x.id}`;if(!grouped[k])grouped[k]={...x,apps:0,starts:0,goals:0,assists:0,cleanSheets:0,minutes:0,yellows:0,reds:0};["apps","starts","goals","assists","cleanSheets","minutes","yellows","reds"].forEach(f=>grouped[k][f]+=Number(x[f]||0));});return Object.values(grouped)};
+ const rows=aggregate(all);
+ const mine=rows.filter(x=>x.club===state.club).sort((a,b)=>b.goals-a.goals||b.assists-a.assists||b.apps-a.apps);
+ const scorers=rows.sort((a,b)=>b.goals-a.goals||b.assists-a.assists||b.apps-a.apps).slice(0,10);
+ const label=competition==="league"?"League":competition==="cup"?"Kup BiH":"All competitions";
+ document.getElementById("app").innerHTML=`<div class="card"><h2>Player Stats</h2><p class="sub">${currentSeasonLabel()} season • Statistics are separated by competition.</p><div class="row"><label for="statsCompetition">Competition</label><select id="statsCompetition" onchange="state.statsCompetition=this.value;save();render()"><option value="league" ${competition==="league"?"selected":""}>League</option><option value="cup" ${competition==="cup"?"selected":""}>Kup BiH</option><option value="all" ${competition==="all"?"selected":""}>All competitions</option></select></div></div><div class="card"><h3>${state.club} — ${label}</h3><div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th style="text-align:left">Player</th><th>Pos</th><th>App</th><th>G</th><th>A</th><th>CS</th><th>Min</th><th>YC</th><th>RC</th></tr></thead><tbody>${mine.map(p=>`<tr style="border-top:1px solid var(--line)"><td style="padding:8px 3px;text-align:left"><b>${p.name}</b></td><td>${p.pos}</td><td>${p.apps}</td><td>${p.goals}</td><td>${p.assists}</td><td>${p.cleanSheets}</td><td>${p.minutes}</td><td>${p.yellows}</td><td>${p.reds}</td></tr>`).join("")||'<tr><td colspan="9" class="sub" style="padding:10px">No statistics recorded for this competition yet.</td></tr>'}</tbody></table></div></div><div class="card"><h3>${label} Top Scorers</h3>${scorers.map((p,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${i+1}. ${p.name}<br><span class="sub">${p.club}</span></span><b>${p.goals} G • ${p.assists} A</b></div>`).join("")||'<div class="sub">No statistics recorded yet.</div>'}</div>`;
 }
 function playMatch(){
  ensureSeasonReady();
@@ -625,7 +694,7 @@ function initCup(){if(state.cup&&state.cup.season===state.season)return;let club
 function cupCurrentFixture(){initCup();return state.cup.pending.find(f=>f.home===state.club||f.away===state.club)||null}
 function cupRoundName(r){return ["","Round of 32","Round of 16","Quarter-final","Semi-final","Final"][r]||"Cup"}
 function simulateCupGame(f){const diff=teamRating(f.home)+3.5-teamRating(f.away);let hg=Math.min(poissonish(Math.max(.3,1.2+diff*.055)),6),ag=Math.min(poissonish(Math.max(.25,1.05-diff*.045)),6);if(hg===ag){if(Math.random()<teamRating(f.home)/(teamRating(f.home)+teamRating(f.away)))hg++;else ag++;}return{...f,hg,ag};}
-function playCup(){initCup();const f=cupCurrentFixture();if(!f){alert("Your club has no cup match in this round.");return;}let games=state.cup.pending.map(x=>simulateCupGame(x));games.forEach(updatePlayerStatsForResult);state.cup.results.push(games);let winners=games.map(r=>r.hg>r.ag?r.home:r.away);let userResult=games.find(r=>r.home===state.club||r.away===state.club);if(userResult){const my=userResult.home===state.club?userResult.hg:userResult.ag,opp=userResult.home===state.club?userResult.ag:userResult.hg;state.rep+=my>opp?2:my===opp?0:-1; if(my>opp){const prize=cupRewardForRound(state.cup.round); state.balance+=prize; state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}}if(winners.length===1){state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5; if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;}}else{let next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);}save();render();}
+function playCup(){initCup();const f=cupCurrentFixture();if(!f){alert("Your club has no cup match in this round.");return;}let games=state.cup.pending.map(x=>simulateCupGame(x));games.forEach(r=>updatePlayerStatsForResult(r,"cup"));state.cup.results.push(games);let winners=games.map(r=>r.hg>r.ag?r.home:r.away);let userResult=games.find(r=>r.home===state.club||r.away===state.club);if(userResult){const my=userResult.home===state.club?userResult.hg:userResult.ag,opp=userResult.home===state.club?userResult.ag:userResult.hg;state.rep+=my>opp?2:my===opp?0:-1; if(my>opp){const prize=cupRewardForRound(state.cup.round); state.balance+=prize; state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}}if(winners.length===1){state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5; if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;}}else{let next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);}save();render();}
 function cup(){initCup();const f=cupCurrentFixture();const last=state.cup.results.length?state.cup.results[state.cup.results.length-1]:[];document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><div class="sub">${state.cup.winner?"Champion: "+state.cup.winner:state.cup.roundName+" • Knockout competition"}</div><div class="sub">Cup earnings: €${(state.cup.rewardMoney||0).toLocaleString()}</div>${f?`<div class="notice"><b>${f.home} vs ${f.away}</b><br>Your cup match is ready.</div><button class="primary" onclick="playCup()">Play cup match</button>`:`<div class="notice">Your club has been eliminated or is awaiting the next draw.</div>`}</div>${last.length?`<div class="card"><h3>Latest cup round</h3>${last.map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line);font-weight:${r.home===state.club||r.away===state.club?'800':'400'}"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join("")}</div>`:""}` }
 function jobs(){
  refreshJobBoard(false);
@@ -682,7 +751,9 @@ function sellPlayer(id){
  normalizeXI(); state.balance+=fee; state.transfersDone.push({name:p.name,from:state.club,to:"Sold",fee});
  save();render();
 }
-function resetGame(){if(confirm("Reset local career?")){localStorage.removeItem("bhfm");location.reload()}}
-initClub();render();
+function resetGame(){if(confirm("Reset local career? This also removes the local backup.")){localStorage.removeItem(SAVE_KEY);localStorage.removeItem(SAVE_BACKUP_KEY);location.reload()}}
+initClub();
+if(window.__bhfmSaveRecovered){save();alert("Your main save could not be read, so BH Football Manager Lite restored the most recent backup. Please check your career before continuing.");}
+render();
 </script>
 </body></html>
