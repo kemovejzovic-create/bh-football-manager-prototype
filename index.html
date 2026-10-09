@@ -32,7 +32,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.18 Competition Stats</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.19 World & Development</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
@@ -132,8 +132,8 @@ const TEAM_RATING={"FK Sarajevo":72,"FK Željezničar":71,"FK Borac Banja Luka":
 const DEFAULT_RATING=56;
 const SAVE_KEY="bhfm";
 const SAVE_BACKUP_KEY="bhfm_backup";
-const SAVE_VERSION=2;
-const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},transferSort:"position",statsCompetition:"league",lastMatch:null,saveVersion:SAVE_VERSION};
+const SAVE_VERSION=3;
+const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,saveVersion:SAVE_VERSION};
 function isObject(value){return !!value&&typeof value==="object"&&!Array.isArray(value)}
 function normalizeSavedState(raw){
  if(!isObject(raw))return null;
@@ -141,7 +141,8 @@ function normalizeSavedState(raw){
  const merged={...JSON.parse(JSON.stringify(DEFAULT_STATE)),...raw};
  const arrayKeys=["players","xi","fixtures","results","jobBoard","jobOffers","repHistory","transferPool","transfersDone","seasonHistory"];
  for(const key of arrayKeys)if(!Array.isArray(merged[key]))merged[key]=[];
- const objectKeys=["table","playerStats","clubSquads"];
+ if(!Array.isArray(merged.promotionHistory))merged.promotionHistory=[];
+ const objectKeys=["table","playerStats","clubSquads","competitionStates"];
  for(const key of objectKeys)if(!isObject(merged[key]))merged[key]={};
  if(!Number.isFinite(Number(merged.season))||Number(merged.season)<2026)merged.season=2026;
  merged.season=Math.floor(Number(merged.season));
@@ -171,6 +172,13 @@ function loadInitialState(){
  return JSON.parse(JSON.stringify(DEFAULT_STATE));
 }
 let state=loadInitialState();
+function applyLeagueMembership(){
+ if(state.leagueMembership&&typeof state.leagueMembership==="object"){
+  Object.entries(state.leagueMembership).forEach(([name,clubs])=>{if(leagues[name]&&Array.isArray(clubs))leagues[name]=clubs.slice();});
+ }
+}
+function persistLeagueMembership(){state.leagueMembership=Object.fromEntries(Object.entries(leagues).map(([k,v])=>[k,v.slice()]));}
+applyLeagueMembership();
 
 function clonePlayer(p){return {...p};}
 function seedSquadForClub(club){return playersFor(club).map((p,i)=>({...p,id:`${club}::${i}`}));}
@@ -209,19 +217,19 @@ function squadRating(){
  return Math.round(topAvg*0.82 + (sorted.length>11?depth*0.18:0));
 }
 function teamRating(club){if(club===state.club)return squadRating()||TEAM_RATING[club]||DEFAULT_RATING;ensureClubSquads();const ps=state.clubSquads[club]||[];if(ps.length)return Math.round(ps.reduce((a,p)=>a+p.ovr,0)/ps.length)||DEFAULT_RATING;return TEAM_RATING[club]||DEFAULT_RATING}
-function leagueClubs(){return leagues[state.league].filter(c=>!c.startsWith("TBD")&&!c.includes("regional"))}
-function meetingsForLeague(){return state.league==="Premijer Liga BiH"?4:2}
-function seasonMatchdays(){return (leagueClubs().length-1)*meetingsForLeague()}
-function makeTable(){const t={};leagueClubs().forEach(c=>t[c]={club:c,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0});return t}
-function generateFixtures(clubs){
- let arr=[...clubs],n=arr.length,rounds=[];
+function playableClubsForLeague(name){return (leagues[name]||[]).filter(c=>c&&!String(c).startsWith("TBD")&&!String(c).includes("regional")&&!String(c).startsWith("Druga liga"));}
+function leagueClubs(){return playableClubsForLeague(state.league)}
+function meetingsForLeague(name=state.league){return name==="Premijer Liga BiH"?4:2}
+function seasonMatchdays(){return Math.max(0,(leagueClubs().length-1)*meetingsForLeague())}
+function makeTableForClubs(clubs){const t={};clubs.forEach(c=>t[c]={club:c,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0});return t}
+function makeTable(){return makeTableForClubs(leagueClubs())}
+function generateFixturesForLeague(clubs,name){
+ let arr=[...clubs],n=arr.length,rounds=[]; if(n<2||n%2!==0)return [];
  for(let r=0;r<n-1;r++){let games=[];for(let i=0;i<n/2;i++){let a=arr[i],b=arr[n-1-i];games.push(r%2===0?{home:a,away:b}:{home:b,away:a})}rounds.push(games);arr=[arr[0],arr[n-1],...arr.slice(1,n-1)]}
  const reverse=rounds.map(g=>g.map(x=>({home:x.away,away:x.home})));
- const sets=meetingsForLeague();
- let out=[...rounds,...reverse];
- if(sets===4) out=[...out,...rounds,...reverse];
- return out.flat()
+ const sets=meetingsForLeague(name);let out=[...rounds,...reverse];if(sets===4)out=[...out,...rounds,...reverse];return out.flat();
 }
+function generateFixtures(clubs){return generateFixturesForLeague(clubs,state.league)}
 const JOB_POOL=[
  ["FK Sarajevo",72],["FK Željezničar",71],["FK Borac Banja Luka",70],["HŠK Zrinjski Mostar",72],["FK Velež Mostar",62],["NK Široki Brijeg",60],["FK Sloga Meridian",55],["FK Radnik Bijeljina",52],["NK Čelik Zenica",50],["BSK Banja Luka",48],
  ["NK Bratstvo Gračanica",48],["FK Igman Konjic",47],["HNK Čapljina",42],["FK Rudar Kakanj",42],["NK Vitez",40],["HNK Tomislav",43],["FK Budućnost Banovići",40],["NK TOŠK Tešanj",44],["NK Zvijezda Gradačac",45],["FK Radnik Hadžići",42],["NK GOŠK Gabela",48],["FK Sloboda Tuzla",50],["NK Travnik",42],["NK Jedinstvo Bihać",40],["NK Stupčanica Olovo",46],["HŠK Posušje",52]
@@ -273,33 +281,33 @@ function useTransferTick(){
 }
 function currentSeasonLabel(){return `${state.season}/${String(state.season+1).slice(-2)}`}
 function playerValue(p){return Math.max(5000,Math.round((p.ovr-40)*(p.ovr-40)*700*(p.age<25?1.18:p.age<30?1:Math.max(.45,1-(p.age-30)*.06))))}
-function developPlayersAtSeasonEnd(){
+function ratingDeltaForPlayer(p,apps=0){
+ const roll=Math.random();let delta=0;
+ if(p.age<=20){delta=roll<.20?4:roll<.48?3:roll<.72?2:roll<.88?1:roll<.94?-1:0;}
+ else if(p.age<=23){delta=roll<.12?4:roll<.30?3:roll<.55?2:roll<.73?1:roll<.84?-1:roll<.89?-2:0;}
+ else if(p.age<=26){delta=roll<.06?3:roll<.22?2:roll<.43?1:roll<.62?0:roll<.78?-1:roll<.86?-2:0;}
+ else if(p.age<=29){delta=roll<.05?2:roll<.20?1:roll<.47?0:roll<.70?-1:roll<.86?-2:roll<.92?-3:0;}
+ else if(p.age<=32){delta=roll<.04?1:roll<.25?0:roll<.52?-1:roll<.78?-2:roll<.91?-3:0;}
+ else {delta=roll<.20?0:roll<.52?-1:roll<.78?-2:roll<.94?-3:-4;}
+ if(apps>=25&&p.age<29&&Math.random()<.25)delta=Math.max(delta,2);
+ if(apps<5&&p.age<24&&Math.random()<.25)delta=Math.min(delta,0);
+ return Math.max(-4,Math.min(4,delta));
+}
+function developSquad(squad,club){
  const changes=[];
- state.players.forEach(p=>{
-  const stat=state.playerStats[statKey(state.club,p,"league")]||blankPlayerStat(state.club,p,"league");
-  const old=p.ovr;
-  let delta=0;
-  if(p.age<=21) delta=Math.random()<0.78?1:Math.random()<0.18?-1:0;
-  else if(p.age<=24) delta=Math.random()<0.65?1:Math.random()<0.12?-1:0;
-  else if(p.age<=27) delta=Math.random()<0.42?1:Math.random()<0.14?-1:0;
-  else if(p.age<=30) delta=Math.random()<0.25?1:Math.random()<0.25?-1:0;
-  else if(p.age<=33) delta=Math.random()<0.18?1:Math.random()<0.45?-1:0;
-  else delta=Math.random()<0.72?-1:0;
-  if(stat.apps>=25 && p.age<30 && Math.random()<0.35) delta=Math.max(delta,1);
-  if(stat.apps<5 && p.age<24 && Math.random()<0.25) delta=Math.min(delta,0);
-  p.ovr=Math.max(35,Math.min(85,p.ovr+delta)); p.age+=1;
-  changes.push({name:p.name,old,now:p.ovr,delta,age:p.age});
- });
+ squad.forEach(p=>{const stat=state.playerStats[statKey(club,p,"league")]||blankPlayerStat(club,p,"league");const old=p.ovr;const delta=ratingDeltaForPlayer(p,stat.apps||0);p.ovr=Math.max(35,Math.min(85,p.ovr+delta));p.age+=1;changes.push({id:p.id,name:p.name,old,now:p.ovr,delta,age:p.age,club});});
  return changes;
 }
+function developPlayersAtSeasonEnd(){
+ const changes=[];ensureClubSquads();
+ Object.keys(state.clubSquads).forEach(club=>{const squad=state.clubSquads[club]||[];changes.push(...developSquad(squad,club));});
+ state.players=(state.clubSquads[state.club]||state.players).map(clonePlayer);
+ return changes.filter(p=>p.club===state.club);
+}
 function retirePlayers(){
- const retired=[];
- state.players=state.players.filter(p=>{
-  let chance=0;
-  if(p.age>=38) chance=.65; else if(p.age>=37) chance=.35; else if(p.age>=36) chance=.18; else if(p.age>=35) chance=.08; else if(p.age>=34) chance=.025;
-  if(Math.random()<chance){retired.push(p);return false} return true;
- });
- normalizeXI(); return retired;
+ const retired=[];ensureClubSquads();
+ Object.keys(state.clubSquads).forEach(club=>{state.clubSquads[club]=(state.clubSquads[club]||[]).filter(p=>{let chance=0;if(p.age>=38)chance=.65;else if(p.age>=37)chance=.35;else if(p.age>=36)chance=.18;else if(p.age>=35)chance=.08;else if(p.age>=34)chance=.025;if(Math.random()<chance){retired.push({...p,club});return false}return true;});});
+ state.players=(state.clubSquads[state.club]||[]).map(clonePlayer);normalizeXI();return retired;
 }
 function buildSeasonReport(development,retired,squadStart){
  const tableRow=state.table[state.club];
@@ -310,7 +318,7 @@ function buildSeasonReport(development,retired,squadStart){
  const topAssist=[...stats].sort((a,b)=>b.assists-a.assists||b.goals-a.goals)[0];
  const bestDev=[...development].sort((a,b)=>b.delta-a.delta)[0];
  const oldRating=squadStart;
- return {season:state.season,label:currentSeasonLabel(),club:state.club,position:pos,points:tableRow?.pts||0,played:tableRow?.p||0,wins:tableRow?.w||0,draws:tableRow?.d||0,losses:tableRow?.l||0,gf:tableRow?.gf||0,ga:tableRow?.ga||0,cup:state.cup?.winner===state.club?"Winners":(state.cup?.results?.some(rs=>rs.some(r=>(r.home===state.club||r.away===state.club)&&((r.home===state.club?r.hg:r.ag)<(r.home===state.club?r.ag:r.hg))))?"Eliminated":"Not completed"),squadRatingStart:oldRating,squadRatingEnd:squadRating(),topScorer:topScorer?{name:topScorer.name,goals:topScorer.goals,assists:topScorer.assists}:null,topAssist:topAssist?{name:topAssist.name,assists:topAssist.assists,goals:topAssist.goals}:null,bestDev:bestDev||null,development,retired:retired.map(p=>({name:p.name,age:p.age})),stats:stats.map(x=>({...x})),leagueReward:leaguePrize,cupReward:state.cup?.rewardMoney||0,totalRewards:leaguePrize+(state.cup?.rewardMoney||0),balance:state.balance};
+ return {season:state.season,label:currentSeasonLabel(),club:state.club,position:pos,points:tableRow?.pts||0,played:tableRow?.p||0,wins:tableRow?.w||0,draws:tableRow?.d||0,losses:tableRow?.l||0,gf:tableRow?.gf||0,ga:tableRow?.ga||0,cup:state.cup?.winner===state.club?"Winners":(state.cup?.results?.some(rs=>rs.some(r=>(r.home===state.club||r.away===state.club)&&((r.home===state.club?r.hg:r.ag)<(r.home===state.club?r.ag:r.hg))))?"Eliminated":"Not completed"),squadRatingStart:oldRating,squadRatingEnd:squadRating(),topScorer:topScorer?{name:topScorer.name,goals:topScorer.goals,assists:topScorer.assists}:null,topAssist:topAssist?{name:topAssist.name,assists:topAssist.assists,goals:topAssist.goals}:null,bestDev:bestDev||null,development,retired:retired.filter(p=>p.club===state.club).map(p=>({name:p.name,age:p.age})),stats:stats.map(x=>({...x})),leagueReward:leaguePrize,cupReward:state.cup?.rewardMoney||0,totalRewards:leaguePrize+(state.cup?.rewardMoney||0),balance:state.balance};
 }
 function leagueReward(position){
  const rewards={1:150000,2:120000,3:100000,4:80000,5:65000,6:50000,7:40000,8:30000,9:20000,10:10000,11:9000,12:8000,13:7000,14:6000,15:5000,16:4000};
@@ -352,17 +360,43 @@ function finishSeason(){
  state.tab="Season Report";
  save(); render(); return true;
 }
+function standingsForTable(table){return Object.values(table||{}).sort((a,b)=>b.pts-a.pts||(b.gf-b.ga)-(a.gf-a.ga)||b.gf-a.gf||b.w-a.w||a.club.localeCompare(b.club));}
+function settleLeagueSnapshot(name){
+ const clubs=playableClubsForLeague(name);if(clubs.length<2)return null;
+ let snap=state.competitionStates[name];
+ if(!snap||snap.season!==state.season||!Array.isArray(snap.fixtures)||snap.fixtures.length!==generateFixturesForLeague(clubs,name).length){snap={season:state.season,matchday:0,fixtures:generateFixturesForLeague(clubs,name),table:makeTableForClubs(clubs),results:[]};}
+ while(snap.matchday<(clubs.length-1)*meetingsForLeague(name)){
+  const n=clubs.length,round=snap.fixtures.slice(snap.matchday*n/2,(snap.matchday+1)*n/2);if(!round.length)break;
+  const rs=round.map(simulateFixture);rs.forEach(r=>applyResultToTable(snap.table,r));snap.results.push(rs);snap.matchday++;
+ }
+ state.competitionStates[name]=snap;return standingsForTable(snap.table);
+}
+function applyResultToTable(table,r){const h=table[r.home],a=table[r.away];if(!h||!a)return;h.p++;a.p++;h.gf+=r.hg;h.ga+=r.ag;a.gf+=r.ag;a.ga+=r.hg;if(r.hg>r.ag){h.w++;h.pts+=3;a.l++}else if(r.hg<r.ag){a.w++;a.pts+=3;h.l++}else{h.d++;a.d++;h.pts++;a.pts++}}
+function settleAllPlayableLeagues(){const standingsByLeague={};Object.keys(leagues).forEach(name=>{const clubs=playableClubsForLeague(name);if(clubs.length>=2)standingsByLeague[name]=settleLeagueSnapshot(name);});return standingsByLeague;}
+function applyPromotionsRelegations(standingsByLeague){
+ const top="Premijer Liga BiH",lower="Prva liga FBiH";const topRows=standingsByLeague[top],lowerRows=standingsByLeague[lower];
+ if(!topRows||!lowerRows||!leagues[top]||!leagues[lower])return [];
+ // Current data only has a populated Prva liga FBiH. Until Prva liga RS and Druga liga club lists are available, use a transparent one-up/one-down game rule between these two populated tiers.
+ const relegated=topRows[topRows.length-1]?.club,promoted=lowerRows[0]?.club;if(!relegated||!promoted)return [];
+ leagues[top]=leagues[top].filter(c=>c!==relegated);leagues[top].push(promoted);
+ leagues[lower]=leagues[lower].filter(c=>c!==promoted);leagues[lower].push(relegated);
+ persistLeagueMembership();
+ const changes=[{club:promoted,from:lower,to:top},{club:relegated,from:top,to:lower}];state.promotionHistory=Array.isArray(state.promotionHistory)?state.promotionHistory:[];state.promotionHistory.push({season:state.season,changes});
+ return changes;
+}
 function startNextSeason(){
  if(!state.seasonReport)return;
- syncCurrentClub();
- state.season+=1; state.matchday=0;
- state.fixtures=generateFixtures(leagueClubs()); state.table=makeTable(); state.results=[];
+ syncCurrentClub();saveActiveCompetition();
+ const standingsByLeague=settleAllPlayableLeagues();const movement=applyPromotionsRelegations(standingsByLeague);
+ state.season+=1; state.competitionStates={}; state.matchday=0;
+ state.league=Object.keys(leagues).find(l=>leagues[l].includes(state.club))||state.league;
+ state.fixtures=generateFixturesForLeague(leagueClubs(),state.league); state.table=makeTable(); state.results=[];
  state.points=0; state.played=0; state.wins=0; state.draws=0; state.losses=0;
  state.jobBoard=[]; state.jobBoardMD=-1; state.jobOffers=[]; state.repHistory=[{md:0,rep:state.rep}];
  state.transferTick=0; state.summerTick=0; state.transferPool=[]; state.transfersDone=[];
  state.cup=null; state.seasonReport=null; state.playerStats={};
  loadClubSquad(state.club); normalizeXI(); initPlayerStats();
- state.tab="Home"; save(); render();
+ state.tab="Home"; saveActiveCompetition(); save(); render();
 }
 function seasonReportPage(){
  const r=state.seasonReport;
@@ -381,10 +415,10 @@ function initSeason(force=false){
  if(force||!Array.isArray(state.fixtures)||state.fixtures.length!==needed||!state.table||Object.keys(state.table).length!==clubs.length){
   state.matchday=0;state.fixtures=generateFixtures(clubs);state.table=makeTable();state.results=[];state.lastMatch=null;state.points=0;state.played=0;state.wins=0;state.draws=0;state.losses=0;state.lastMatch=null;state.jobBoard=[];state.jobBoardMD=-1;state.jobOffers=[];state.repHistory=[{md:0,rep:state.rep}];state.transferTick=0;state.summerTick=0;state.transferPool=[];state.transfersDone=[];state.cup=null;state.playerStats={};state.seasonReport=null;
  }
- initPlayerStats();
+ initPlayerStats();saveActiveCompetition();
 }
 function save(){
- try{
+ try{persistLeagueMembership();
   const existing=localStorage.getItem(SAVE_KEY);
   if(existing){try{const parsed=JSON.parse(existing);if(normalizeSavedState(parsed))localStorage.setItem(SAVE_BACKUP_KEY,existing);}catch(e){/* Never replace a good backup with corrupt data. */}}
   state.saveVersion=SAVE_VERSION;
@@ -435,7 +469,7 @@ function home(){
  const pos=standings().findIndex(x=>x.club===state.club)+1,total=seasonMatchdays();
  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}/${total}</div><h2>${state.club}</h2><div class="grid"><div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div><div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">League</div><div class="stat">#${pos||"-"} • ${state.points} pts</div></div><div><div class="label">Squad OVR</div><div class="stat">${squadRating()}</div></div></div></div>
  <div class="card"><h3>Next fixture</h3><p>${nextOpponent()}</p>${state.matchday<total?'<button class="primary" onclick="playMatch()">Play matchday</button>':'<div class="notice">League season complete.</div>'}</div>
- <div class="card"><h3>Transfer market</h3><div class="sub">${transferStatus().label}</div></div><div class="card"><h3>Latest matchday</h3>${latestRoundHTML()}</div>
+ <div class="card"><h3>Promotion & relegation</h3><p class="sub">The populated top two tiers use one-up/one-down movement at season end. Lower-tier movement is not enabled until real club lists are available for Prva liga RS and Druga liga divisions.</p>${(state.promotionHistory||[]).slice(-1).map(x=>`<div class="notice">${x.season}/${String(x.season+1).slice(-2)}: ${x.changes.map(c=>`${c.club}: ${c.from} → ${c.to}`).join(" • ")}</div>`).join("")}</div><div class="card"><h3>Transfer market</h3><div class="sub">${transferStatus().label}</div></div><div class="card"><h3>Latest matchday</h3>${latestRoundHTML()}</div>
  <div class="card"><h3>Real 2026/27 data</h3><p class="sub">Club/player names are sourced from current 2026/27 federation and squad listings. OVR is a game attribute, not an official player rating. Prva liga FBiH starting XIs are based on published 2026/27 match lineups.</p></div><div class="card"><h3>Season engine</h3><p class="sub">Every fixture on the matchday is simulated together. Premijer Liga BiH uses 36 matchdays (four meetings per opponent); other leagues retain their two-meeting format.</p></div>`
 }
 function fixtureForRound(round){const n=leagueClubs().length;return state.fixtures.slice(round*n/2,(round+1)*n/2)}
@@ -485,7 +519,9 @@ function matchMinute(existing){
  while(existing.includes(m))m=1+Math.floor(Math.random()*90);
  return m;
 }
+const GAME_REFEREES=["Adnan Kapić","Mirza Hadžić","Tarik Bešić","Dario Vuković","Amar Smajić","Nedim Lelić","Ivan Jurić","Faruk Omerović","Emir Kovačević","Marko Radić","Kenan Selimović","Filip Marić"];
 function generateMatchReport(r){
+ const referee=GAME_REFEREES[Math.floor(Math.random()*GAME_REFEREES.length)];
  const homeXI=lineupForStats(r.home), awayXI=lineupForStats(r.away);
  const events=[], usedMinutes=[];
  const add=(minute,type,text,team,player)=>events.push({minute,type,text,team:team||null,player:player?player.name:null});
@@ -555,6 +591,7 @@ function generateMatchReport(r){
  const onAway=Math.min(shotsAway,Math.max(r.ag,Math.floor(2+Math.random()*5)));
  return {
    ...r,
+   referee,
    events,
    homeScorers,awayScorers,
    stats:{
@@ -634,7 +671,7 @@ function playMatch(){
  const report=generateMatchReport(results[idx]);
  updatePlayerStatsFromReport(report);
  results.forEach((x,i)=>{if(i!==idx)updatePlayerStatsForResult(x);applyResult(x)});
- state.results.push(results);state.lastMatch=report;state.matchday++;
+ state.results.push(results);state.lastMatch=report;state.matchday++;saveActiveCompetition();
  const r=results[idx], myGoals=r.home===state.club?r.hg:r.ag, oppGoals=r.home===state.club?r.ag:r.hg;
  state.played++;
  const oldRep=state.rep;
@@ -660,7 +697,7 @@ function matchReportPage(){
  document.getElementById("app").innerHTML=`
  <div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}</div>
  <h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2>
- <p style="text-align:center" class="sub">${myScore>oppScore?"🏆 Victory":myScore<oppScore?"Defeat":"Draw"} • ${state.mentality}</p></div>
+ <p style="text-align:center" class="sub">${myScore>oppScore?"🏆 Victory":myScore<oppScore?"Defeat":"Draw"} • ${state.mentality}</p><div class="notice">Simulated referee: <b>${m.referee||"Not recorded"}</b><div class="sub">In-game assignment; not an official match appointment.</div></div></div>
  <div class="card"><h3>Match timeline</h3>${events}</div>
  <div class="card"><h3>Match statistics</h3>
  <div class="row"><span>Possession</span><b>${homePoss}% — ${awayPoss}%</b></div>
@@ -706,14 +743,30 @@ function jobs(){
  ${state.jobBoard.map((j,i)=>{const available=state.rep>=j[1]&&i<3;return `<div class="club"><div class="badge">${i+1}</div><div style="flex:1"><b>${j[0]}</b><div class="sub">Required reputation: ${j[1]} • ${available?'Available now':'Reputation locked'}</div></div><button ${available?'':'disabled'} onclick="takeJob('${j[0]}')">Apply</button></div>`}).join("")}</div>`
 }
 function acceptOffer(i){const offer=state.jobOffers[i];if(!offer)return;takeJob(offer.club)}
+function saveActiveCompetition(){
+ if(!state.league)return;
+ state.competitionStates=state.competitionStates||{};
+ state.competitionStates[state.league]={season:state.season,matchday:state.matchday,fixtures:JSON.parse(JSON.stringify(state.fixtures||[])),table:JSON.parse(JSON.stringify(state.table||{})),results:JSON.parse(JSON.stringify(state.results||[])),lastMatch:null};
+ persistLeagueMembership();
+}
+function loadCompetition(name){
+ state.league=name;
+ const snap=state.competitionStates?.[name];
+ if(snap&&snap.season===state.season&&Array.isArray(snap.fixtures)&&snap.fixtures.length){
+  state.matchday=Math.max(0,Math.min(Number(snap.matchday)||0,(playableClubsForLeague(name).length-1)*meetingsForLeague(name)));
+  state.fixtures=JSON.parse(JSON.stringify(snap.fixtures));state.table=JSON.parse(JSON.stringify(snap.table||{}));state.results=JSON.parse(JSON.stringify(snap.results||[]));
+ }else{
+  const clubs=playableClubsForLeague(name);state.matchday=0;state.fixtures=generateFixturesForLeague(clubs,name);state.table=makeTableForClubs(clubs);state.results=[];
+ }
+ const row=state.table[state.club];state.points=row?.pts||0;state.played=row?.p||0;state.wins=row?.w||0;state.draws=row?.d||0;state.losses=row?.l||0;state.lastMatch=null;
+ saveActiveCompetition();
+}
 function takeJob(c){
  if(!c||c===state.club)return;
- syncCurrentClub();
- state.club=c;state.league=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";
- loadClubSquad(c);
- state.xi=state.players.slice(0,11).map(p=>p.id);
- state.jobOffers=[];
- state.tab="Home";save();render();
+ syncCurrentClub();saveActiveCompetition();
+ const targetLeague=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";
+ state.club=c;loadClubSquad(c);state.xi=state.players.slice(0,11).map(p=>p.id);state.jobOffers=[];
+ loadCompetition(targetLeague);state.tab="Home";save();render();
 }
 
 function transfers(){
