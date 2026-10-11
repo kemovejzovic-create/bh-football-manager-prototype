@@ -32,7 +32,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.19 World & Development</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.20 Synchronized Leagues & Career Fixes</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
@@ -132,8 +132,8 @@ const TEAM_RATING={"FK Sarajevo":72,"FK Željezničar":71,"FK Borac Banja Luka":
 const DEFAULT_RATING=56;
 const SAVE_KEY="bhfm";
 const SAVE_BACKUP_KEY="bhfm_backup";
-const SAVE_VERSION=3;
-const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,saveVersion:SAVE_VERSION};
+const SAVE_VERSION=4;
+const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,jobNotice:"",saveVersion:SAVE_VERSION};
 function isObject(value){return !!value&&typeof value==="object"&&!Array.isArray(value)}
 function normalizeSavedState(raw){
  if(!isObject(raw))return null;
@@ -221,6 +221,40 @@ function playableClubsForLeague(name){return (leagues[name]||[]).filter(c=>c&&!S
 function leagueClubs(){return playableClubsForLeague(state.league)}
 function meetingsForLeague(name=state.league){return name==="Premijer Liga BiH"?4:2}
 function seasonMatchdays(){return Math.max(0,(leagueClubs().length-1)*meetingsForLeague())}
+function leagueRoundCount(name){const clubs=playableClubsForLeague(name);return clubs.length<2?0:(clubs.length-1)*meetingsForLeague(name)}
+function createCompetitionSnapshot(name){
+ const clubs=playableClubsForLeague(name);
+ return {season:state.season,matchday:0,fixtures:generateFixturesForLeague(clubs,name),table:makeTableForClubs(clubs),results:[],lastMatch:null};
+}
+function ensureCompetitionSnapshot(name){
+ state.competitionStates=state.competitionStates||{};
+ const clubs=playableClubsForLeague(name), expected=clubs.length<2?0:generateFixturesForLeague(clubs,name).length;
+ let snap=state.competitionStates[name];
+ if(clubs.length<2)return null;
+ if(!snap||snap.season!==state.season||!Array.isArray(snap.fixtures)||snap.fixtures.length!==expected||!snap.table||Object.keys(snap.table).length!==clubs.length){
+  // Preserve a legacy active-season snapshot when it is structurally valid; otherwise start a clean snapshot for this league only.
+  snap=createCompetitionSnapshot(name);
+  state.competitionStates[name]=snap;
+ }
+ const total=leagueRoundCount(name);
+ snap.matchday=Math.max(0,Math.min(Number(snap.matchday)||0,total));
+ if(!Array.isArray(snap.results))snap.results=[];
+ return snap;
+}
+function advanceOtherLeaguesOneRound(activeLeague){
+ Object.keys(leagues).forEach(name=>{
+  if(name===activeLeague)return;
+  const clubs=playableClubsForLeague(name);if(clubs.length<2)return;
+  const snap=ensureCompetitionSnapshot(name);if(!snap)return;
+  const total=leagueRoundCount(name);if(snap.matchday>=total)return;
+  const perRound=clubs.length/2;
+  const round=snap.fixtures.slice(snap.matchday*perRound,(snap.matchday+1)*perRound);
+  if(!round.length)return;
+  const results=round.map(simulateFixture);
+  results.forEach(r=>applyResultToTable(snap.table,r));
+  snap.results.push(results);snap.matchday++;
+ });
+}
 function makeTableForClubs(clubs){const t={};clubs.forEach(c=>t[c]={club:c,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0});return t}
 function makeTable(){return makeTableForClubs(leagueClubs())}
 function generateFixturesForLeague(clubs,name){
@@ -236,8 +270,9 @@ const JOB_POOL=[
 ];
 function shuffle(a){return [...a].sort(()=>Math.random()-.5)}
 function refreshJobBoard(force=false){
- const eligible=JOB_POOL.filter(j=>j[0]!==state.club);
- if(force||!Array.isArray(state.jobBoard)||state.jobBoardMD!==state.matchday){
+ const eligible=JOB_POOL.filter(j=>j[0]!==state.club&&Object.keys(leagues).some(name=>playableClubsForLeague(name).includes(j[0])));
+ const boardIsValid=Array.isArray(state.jobBoard)&&state.jobBoard.length>0&&state.jobBoard.every(j=>eligible.some(e=>e[0]===j[0]));
+ if(force||!boardIsValid||!Array.isArray(state.jobBoard)||state.jobBoardMD!==state.matchday){
   const shuffled=shuffle(eligible);
   const accessible=shuffled.filter(j=>j[1]<=state.rep).slice(0,3);
   const locked=shuffled.filter(j=>j[1]>state.rep).slice(0,3);
@@ -467,10 +502,10 @@ function render(){
 }
 function home(){
  const pos=standings().findIndex(x=>x.club===state.club)+1,total=seasonMatchdays();
- document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}/${total}</div><h2>${state.club}</h2><div class="grid"><div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div><div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">League</div><div class="stat">#${pos||"-"} • ${state.points} pts</div></div><div><div class="label">Squad OVR</div><div class="stat">${squadRating()}</div></div></div></div>
+ document.getElementById("app").innerHTML=`${state.jobNotice?`<div class="notice" style="margin-bottom:12px">${state.jobNotice}</div>`:""}<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}/${total}</div><h2>${state.club}</h2><div class="grid"><div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div><div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">League</div><div class="stat">#${pos||"-"} • ${state.points} pts</div></div><div><div class="label">Squad OVR</div><div class="stat">${squadRating()}</div></div></div></div>
  <div class="card"><h3>Next fixture</h3><p>${nextOpponent()}</p>${state.matchday<total?'<button class="primary" onclick="playMatch()">Play matchday</button>':'<div class="notice">League season complete.</div>'}</div>
  <div class="card"><h3>Promotion & relegation</h3><p class="sub">The populated top two tiers use one-up/one-down movement at season end. Lower-tier movement is not enabled until real club lists are available for Prva liga RS and Druga liga divisions.</p>${(state.promotionHistory||[]).slice(-1).map(x=>`<div class="notice">${x.season}/${String(x.season+1).slice(-2)}: ${x.changes.map(c=>`${c.club}: ${c.from} → ${c.to}`).join(" • ")}</div>`).join("")}</div><div class="card"><h3>Transfer market</h3><div class="sub">${transferStatus().label}</div></div><div class="card"><h3>Latest matchday</h3>${latestRoundHTML()}</div>
- <div class="card"><h3>Real 2026/27 data</h3><p class="sub">Club/player names are sourced from current 2026/27 federation and squad listings. OVR is a game attribute, not an official player rating. Prva liga FBiH starting XIs are based on published 2026/27 match lineups.</p></div><div class="card"><h3>Season engine</h3><p class="sub">Every fixture on the matchday is simulated together. Premijer Liga BiH uses 36 matchdays (four meetings per opponent); other leagues retain their two-meeting format.</p></div>`
+ <div class="card"><h3>Real 2026/27 data</h3><p class="sub">Club/player names are sourced from current 2026/27 federation and squad listings. OVR is a game attribute, not an official player rating. Prva liga FBiH starting XIs are based on published 2026/27 match lineups.</p></div><div class="card"><h3>Season engine</h3><p class="sub">Every populated league advances one round per world matchday, with separate saved fixtures, tables and results. Premijer Liga BiH uses 36 matchdays (four meetings per opponent); other populated leagues retain their two-meeting format.</p></div>`
 }
 function fixtureForRound(round){const n=leagueClubs().length;return state.fixtures.slice(round*n/2,(round+1)*n/2)}
 function nextOpponent(){const total=seasonMatchdays();if(state.matchday>=total)return"Season complete";const f=fixtureForRound(state.matchday).find(x=>x.home===state.club||x.away===state.club);if(!f)return"Schedule pending";return`${f.home===state.club?"Home":"Away"} • ${f.home===state.club?f.away:f.home}`}
@@ -656,7 +691,12 @@ function playMatch(){
  ensureSeasonReady();
  const total=seasonMatchdays();if(state.matchday>=total)return;
  normalizeXI();
- const round=fixtureForRound(state.matchday),my=round.find(x=>x.home===state.club||x.away===state.club);if(!my)return;
+ const activeSnap=ensureCompetitionSnapshot(state.league);
+ if(activeSnap){
+  // The active view is authoritative for its own competition, but its round is kept aligned with that league's saved snapshot.
+  state.matchday=activeSnap.matchday;state.fixtures=activeSnap.fixtures;state.table=activeSnap.table;state.results=activeSnap.results;
+ }
+ const round=fixtureForRound(state.matchday),my=round.find(x=>x.home===state.club||x.away===state.club);if(!my){state.jobNotice="No fixture was found for this matchday. Your saved league schedule was preserved.";save();render();return;}
  let results=round.map(simulateFixture),idx=results.findIndex(r=>r.home===my.home&&r.away===my.away);
  const starters=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
  const avg=starters.length?starters.reduce((a,p)=>a+p.ovr,0)/starters.length:teamRating(state.club);
@@ -671,7 +711,11 @@ function playMatch(){
  const report=generateMatchReport(results[idx]);
  updatePlayerStatsFromReport(report);
  results.forEach((x,i)=>{if(i!==idx)updatePlayerStatsForResult(x);applyResult(x)});
- state.results.push(results);state.lastMatch=report;state.matchday++;saveActiveCompetition();
+ state.results.push(results);state.lastMatch=report;state.matchday++;
+ // Advance every other populated league by one round on the same world tick.
+ // Each league keeps its own fixtures/table/results; finished shorter leagues wait for the shared season transition.
+ advanceOtherLeaguesOneRound(state.league);
+ saveActiveCompetition();
  const r=results[idx], myGoals=r.home===state.club?r.hg:r.ag, oppGoals=r.home===state.club?r.ag:r.hg;
  state.played++;
  const oldRep=state.rep;
@@ -680,6 +724,7 @@ function playMatch(){
  else{state.draws++;state.balance+=5000}
  maybeGenerateJobOffer(oldRep,state.rep);
  const row=state.table[state.club];state.points=row?row.pts:state.points;state.wins=row?row.w:state.wins;state.draws=row?row.d:state.draws;state.losses=row?row.l:state.losses;
+ state.jobBoardMD=-1;
  if(state.matchday>=total){save();finishSeason();return}
  save();state.tab="Match Report";render();
 }
@@ -736,37 +781,42 @@ function cup(){initCup();const f=cupCurrentFixture();const last=state.cup.result
 function jobs(){
  refreshJobBoard(false);
  const offers=Array.isArray(state.jobOffers)?state.jobOffers:[];
- const activeOffers=offers.filter(o=>o.expiresMD>=state.matchday);
+ const activeOffers=offers.filter(o=>o.expiresMD>=state.matchday&&o.club!==state.club);
  state.jobOffers=activeOffers;
  document.getElementById("app").innerHTML=`<div class="card"><h2>Jobs</h2><p class="sub">Your reputation: ${state.rep}. Six clubs are shown each matchday; three are normally available and three require higher reputation.</p>
- ${activeOffers.length?`<div class="notice"><b>Job offers</b>${activeOffers.map((o,i)=>`<div class="club"><div style="flex:1"><b>${o.club}</b><div class="sub">${o.reason} • Offer expires after matchday ${o.expiresMD}</div></div><button class="primary" onclick="acceptOffer(${i})">Accept offer</button></div>`).join("")}</div>`:""}
- ${state.jobBoard.map((j,i)=>{const available=state.rep>=j[1]&&i<3;return `<div class="club"><div class="badge">${i+1}</div><div style="flex:1"><b>${j[0]}</b><div class="sub">Required reputation: ${j[1]} • ${available?'Available now':'Reputation locked'}</div></div><button ${available?'':'disabled'} onclick="takeJob('${j[0]}')">Apply</button></div>`}).join("")}</div>`
+ ${state.jobNotice?`<div class="notice" style="margin:8px 0">${state.jobNotice}</div>`:""}
+ ${state.seasonReport?`<div class="notice">Your league season is complete. Continue to the next season before accepting another job.</div>`:""}
+ ${activeOffers.length?`<div class="notice"><b>Job offers</b>${activeOffers.map((o,i)=>`<div class="club"><div style="flex:1"><b>${o.club}</b><div class="sub">${o.reason} • Offer expires after matchday ${o.expiresMD}</div></div><button class="primary" onclick="acceptOffer(${i})" ${state.seasonReport?'disabled':''}>Accept offer</button></div>`).join("")}</div>`:""}
+ ${state.jobBoard.map((j,i)=>{const available=state.rep>=j[1]&&j[0]!==state.club;return `<div class="club"><div class="badge">${i+1}</div><div style="flex:1"><b>${j[0]}</b><div class="sub">Required reputation: ${j[1]} • ${available?'Available now':'Reputation locked'}</div></div><button ${available&&!state.seasonReport?'':'disabled'} onclick="takeJob('${j[0]}')">Apply</button></div>`}).join("")}</div>`
 }
-function acceptOffer(i){const offer=state.jobOffers[i];if(!offer)return;takeJob(offer.club)}
+function acceptOffer(i){const offer=state.jobOffers[i];if(!offer||offer.expiresMD<state.matchday){state.jobNotice="This job offer has expired.";save();render();return;}takeJob(offer.club,true)}
 function saveActiveCompetition(){
  if(!state.league)return;
  state.competitionStates=state.competitionStates||{};
- state.competitionStates[state.league]={season:state.season,matchday:state.matchday,fixtures:JSON.parse(JSON.stringify(state.fixtures||[])),table:JSON.parse(JSON.stringify(state.table||{})),results:JSON.parse(JSON.stringify(state.results||[])),lastMatch:null};
+ const previous=state.competitionStates[state.league]||{};
+ state.competitionStates[state.league]={season:state.season,matchday:state.matchday,fixtures:JSON.parse(JSON.stringify(state.fixtures||[])),table:JSON.parse(JSON.stringify(state.table||{})),results:JSON.parse(JSON.stringify(state.results||[])),lastMatch:state.lastMatch||previous.lastMatch||null};
  persistLeagueMembership();
 }
 function loadCompetition(name){
  state.league=name;
- const snap=state.competitionStates?.[name];
- if(snap&&snap.season===state.season&&Array.isArray(snap.fixtures)&&snap.fixtures.length){
-  state.matchday=Math.max(0,Math.min(Number(snap.matchday)||0,(playableClubsForLeague(name).length-1)*meetingsForLeague(name)));
-  state.fixtures=JSON.parse(JSON.stringify(snap.fixtures));state.table=JSON.parse(JSON.stringify(snap.table||{}));state.results=JSON.parse(JSON.stringify(snap.results||[]));
- }else{
-  const clubs=playableClubsForLeague(name);state.matchday=0;state.fixtures=generateFixturesForLeague(clubs,name);state.table=makeTableForClubs(clubs);state.results=[];
- }
+ const snap=ensureCompetitionSnapshot(name);
+ if(snap){
+  state.matchday=snap.matchday;state.fixtures=JSON.parse(JSON.stringify(snap.fixtures));state.table=JSON.parse(JSON.stringify(snap.table||{}));state.results=JSON.parse(JSON.stringify(snap.results||[]));
+ }else{state.matchday=0;state.fixtures=[];state.table={};state.results=[];}
  const row=state.table[state.club];state.points=row?.pts||0;state.played=row?.p||0;state.wins=row?.w||0;state.draws=row?.d||0;state.losses=row?.l||0;state.lastMatch=null;
  saveActiveCompetition();
 }
-function takeJob(c){
- if(!c||c===state.club)return;
+function takeJob(c,fromOffer=false){
+ const job=JOB_POOL.find(j=>j[0]===c);
+ const targetLeague=Object.keys(leagues).find(l=>playableClubsForLeague(l).includes(c));
+ const activeOffer=(state.jobOffers||[]).find(o=>o.club===c&&o.expiresMD>=state.matchday);
+ if(state.seasonReport){state.jobNotice="Your season is complete. Continue to the next season before changing clubs.";save();render();return false;}
+ if(!job||!targetLeague||c===state.club){state.jobNotice=c===state.club?"You already manage this club. Choose a different job.":"This job is no longer available. Refresh the Jobs screen and try again.";state.jobBoardMD=-1;save();render();return false;}
+ if(state.rep<job[1]&&!(fromOffer&&activeOffer)){state.jobNotice="Your reputation is too low for this job.";save();render();return false;}
  syncCurrentClub();saveActiveCompetition();
- const targetLeague=Object.keys(leagues).find(l=>leagues[l].includes(c))||"Premijer Liga BiH";
- state.club=c;loadClubSquad(c);state.xi=state.players.slice(0,11).map(p=>p.id);state.jobOffers=[];
- loadCompetition(targetLeague);state.tab="Home";save();render();
+ state.club=c;state.league=targetLeague;loadClubSquad(c);state.xi=state.players.slice(0,11).map(p=>p.id);state.jobOffers=[];
+ // Do not reset season or global competition snapshots: restore this club's already-progressed league.
+ loadCompetition(targetLeague);state.jobBoard=[];state.jobBoardMD=-1;state.jobNotice=`Job accepted: you are now managing ${c}. The ${currentSeasonLabel()} season and league results have been preserved.`;state.tab="Home";save();render();return true;
 }
 
 function transfers(){
