@@ -32,7 +32,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.22 Squad Audit & Position Corrections</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.24 History & Trophy Celebrations</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
@@ -152,8 +152,8 @@ const TEAM_RATING={"FK Sarajevo":72,"FK Željezničar":71,"FK Borac Banja Luka":
 const DEFAULT_RATING=56;
 const SAVE_KEY="bhfm";
 const SAVE_BACKUP_KEY="bhfm_backup";
-const SAVE_VERSION=7;
-const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,pendingMatch:null,jobNotice:"",celebration:null,saveVersion:SAVE_VERSION};
+const SAVE_VERSION=8;
+const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],achievements:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,pendingMatch:null,jobNotice:"",celebration:null,saveVersion:SAVE_VERSION};
 function isObject(value){return !!value&&typeof value==="object"&&!Array.isArray(value)}
 function normalizeSavedState(raw){
  if(!isObject(raw))return null;
@@ -162,6 +162,7 @@ function normalizeSavedState(raw){
  const arrayKeys=["players","xi","fixtures","results","jobBoard","jobOffers","repHistory","transferPool","transfersDone","seasonHistory"];
  for(const key of arrayKeys)if(!Array.isArray(merged[key]))merged[key]=[];
  if(!Array.isArray(merged.promotionHistory))merged.promotionHistory=[];
+ if(!Array.isArray(merged.achievements))merged.achievements=[];
  const objectKeys=["table","playerStats","clubSquads","competitionStates"];
  for(const key of objectKeys)if(!isObject(merged[key]))merged[key]={};
  if(!Number.isFinite(Number(merged.season))||Number(merged.season)<2026)merged.season=2026;
@@ -174,6 +175,7 @@ function normalizeSavedState(raw){
  if(!formations[merged.formation])merged.formation=DEFAULT_STATE.formation;
  if(typeof merged.mentality!=="string")merged.mentality=DEFAULT_STATE.mentality;
  if(typeof merged.tab!=="string")merged.tab=DEFAULT_STATE.tab;
+ if(merged.tab==="Celebration")merged.tab="Home";
  if(!["league","cup","all"].includes(merged.statsCompetition))merged.statsCompetition="league";
  if(!isObject(merged.seasonReport)&&merged.seasonReport!==null)merged.seasonReport=null;
  if(!isObject(merged.pendingMatch))merged.pendingMatch=null;
@@ -349,6 +351,7 @@ function useTransferTick(){
  if(state.summerTick<10){state.summerTick++;state.transferPool=generateTransferPool();save();render();}
 }
 function currentSeasonLabel(){return `${state.season}/${String(state.season+1).slice(-2)}`}
+function seasonLabel(year){const y=Number(year);return Number.isFinite(y)&&y>=1900?`${y}/${String(y+1).slice(-2)}`:currentSeasonLabel()}
 function playerValue(p){return Math.max(5000,Math.round((p.ovr-40)*(p.ovr-40)*700*(p.age<25?1.18:p.age<30?1:Math.max(.45,1-(p.age-30)*.06))))}
 function ratingDeltaForPlayer(p,apps=0){
  const roll=Math.random();let delta=0;
@@ -397,18 +400,34 @@ function cupRewardForRound(round){
  // Reward is paid when a club wins/passes a round: R32 20k, R16 40k, QF 80k, SF 160k.
  return 20000*Math.pow(2,Math.max(0,round-1));
 }
+function addAchievement(type,title,description,emoji="🏆",extra={}){
+ state.achievements=Array.isArray(state.achievements)?state.achievements:[];
+ const season=Number(extra.season??state.season),club=extra.club||state.club;
+ const key=`${type}|${season}|${club}|${title}`;
+ if(state.achievements.some(a=>a.key===key))return false;
+ state.achievements.unshift({key,type,title,description,emoji,season,club,date:new Date().toISOString(),...extra});
+ return true;
+}
 function showCelebration(kind,title,message,emoji="🏆",returnTab="Home"){
- state.celebration={kind,title,message,emoji,returnTab,season:state.season};
- state.tab="Celebration";
+ // A celebration is a one-time modal overlay, not a permanent navigation tab.
+ const id=`${kind}|${state.season}|${state.club}|${title}`;
+ if(state.celebration?.id===id)return;
+ state.celebration={id,kind,title,message,emoji,returnTab,season:state.season,club:state.club};
 }
-function dismissCelebration(){
- const target=state.celebration?.returnTab||"Home";
- state.celebration=null;state.tab=target;save();render();
+function dismissCelebration(){state.celebration=null;document.getElementById("celebrationOverlay")?.remove();save();render();}
+function celebrationOverlay(){
+ const c=state.celebration;if(!c)return;
+ const host=document.createElement("div");host.id="celebrationOverlay";host.style.cssText="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(3,7,12,.86);backdrop-filter:blur(7px);overflow:hidden";
+ const bits=Array.from({length:36},(_,i)=>`<i style="position:absolute;left:${(i*37)%100}%;top:-18px;width:7px;height:12px;border-radius:2px;background:${["#facc15","#4ade80","#60a5fa","#f472b6","#fb923c"][i%5]};transform:rotate(${i*29%180}deg);animation:bhConfetti ${2+(i%9)/3}s linear ${-(i%7)/2}s infinite"></i>`).join("");
+ host.innerHTML=`<style>@keyframes bhConfetti{to{top:110%;transform:translateX(${(c.kind.length%2?1:-1)*40}px) rotate(720deg)}}@keyframes bhTrophyPop{0%{transform:scale(.4) rotate(-12deg);opacity:0}75%{transform:scale(1.12) rotate(3deg);opacity:1}100%{transform:scale(1);opacity:1}}@media(prefers-reduced-motion:reduce){#celebrationOverlay i{animation:none!important}}</style>${bits}<div style="position:relative;width:min(100%,520px);text-align:center;padding:30px 22px;border:1px solid #4ade80;border-radius:22px;background:linear-gradient(160deg,#1d3026,#151b23 70%);box-shadow:0 24px 100px #0009;color:#f4f7fb"><div style="font-size:76px;line-height:1.2;animation:bhTrophyPop .6s ease-out">${c.emoji||"🏆"}</div><div style="font-size:12px;letter-spacing:3px;color:#86efac;font-weight:800;margin:12px 0">CONGRATULATIONS</div><h2 style="font-size:clamp(26px,5vw,38px);margin:8px 0 12px">${c.title}</h2><p style="font-size:16px;line-height:1.55;color:#d6deea">${c.message}</p><div style="padding:12px;margin:20px 0;background:#0f1724;border-radius:12px;color:#d6deea">${c.club||state.club} · ${seasonLabel(c.season??state.season)}</div><button class="primary" style="width:100%;font-size:16px;padding:14px" onclick="dismissCelebration()">Continue career</button></div>`;
+ document.body.appendChild(host);
 }
-function celebrationPage(){
- const c=state.celebration;
- if(!c){state.tab="Home";home();return;}
- document.getElementById("app").innerHTML=`<div class="card" style="text-align:center;padding:28px 16px;background:linear-gradient(160deg,#1c2b20,#151b23 68%);border-color:#4ade80"><div style="font-size:64px;line-height:1.3">${c.emoji||"🏆"}</div><div class="sub" style="letter-spacing:2px;margin:8px 0">CONGRATULATIONS</div><h2 style="font-size:28px;margin:12px 0">${c.title}</h2><p style="font-size:15px;line-height:1.6">${c.message}</p><div class="notice" style="margin:18px 0">${state.club} • ${currentSeasonLabel()}</div><button class="primary" style="width:100%" onclick="dismissCelebration()">Continue</button></div>`;
+function historyPage(){
+ const seasons=[...(state.seasonHistory||[])].sort((a,b)=>(b.season||0)-(a.season||0));
+ const achievements=state.achievements||[];
+ const seasonCards=seasons.length?seasons.map(r=>`<div class="card"><div class="row" style="align-items:flex-start"><div style="flex:1"><div class="sub">${r.label||seasonLabel(r.season)}</div><h3 style="margin:5px 0">${r.club||"Unknown club"}</h3><div class="sub">${r.league||"League unavailable"}</div></div><div style="text-align:right"><div class="stat">${r.position?`#${r.position}`:"—"}</div><div class="sub">Final position</div></div></div><div class="grid"><div><div class="label">Points</div><div class="stat">${r.points??"—"}</div></div><div><div class="label">Record</div><div class="stat">${[r.wins,r.draws,r.losses].every(Number.isFinite)?`${r.wins}-${r.draws}-${r.losses}`:"—"}</div></div><div><div class="label">Cup</div><div class="stat" style="font-size:16px">${r.cup||"Not recorded"}</div></div></div>${r.topScorer?`<div class="sub" style="margin-top:8px">Top scorer: ${r.topScorer.name} (${r.topScorer.goals} goals)</div>`:""}${r.totalRewards?`<div class="sub">Rewards: €${Number(r.totalRewards).toLocaleString()}</div>`:""}</div>`).join(""):'<div class="card sub">No completed seasons have been archived yet. Your first season report will appear here after the season ends.</div>';
+ const achievementCards=achievements.length?achievements.map(a=>`<div class="club"><div style="font-size:28px;width:42px;text-align:center">${a.emoji||"🏅"}</div><div style="flex:1"><b>${a.title}</b><div class="sub">${a.club||"Career"} · ${a.season?seasonLabel(a.season):"Career milestone"}</div><div class="sub">${a.description||"Achievement unlocked"}</div></div></div>`).join(""):'<div class="sub">No achievements unlocked yet. Titles, cups, promotions and major transfers will be recorded here.</div>';
+ document.getElementById("app").innerHTML=`<div class="card"><div class="sub">Your managerial career</div><h2>History & Achievements</h2><p class="sub">Completed seasons and milestones are saved to this career.</p><div class="grid"><div><div class="label">Seasons archived</div><div class="stat">${seasons.length}</div></div><div><div class="label">Achievements</div><div class="stat">${achievements.length}</div></div><div><div class="label">Trophies</div><div class="stat">${achievements.filter(a=>["league-title","cup-win","promotion","european-win"].includes(a.type)).length}</div></div></div></div><div class="card"><h3>🏆 Season history</h3>${seasonCards}</div><div class="card"><h3>🎖️ Achievements</h3>${achievementCards}</div>`;
 }
 function finishSeason(){
  if(state.matchday<seasonMatchdays()||state.seasonReport)return false;
@@ -434,13 +453,13 @@ function finishSeason(){
    }
  }
  const report=buildSeasonReport(development,retired,squadStart)||{};
- report.cup=cupLabel; report.leagueReward=leaguePrize; report.cupReward=cupReward;
+ report.cup=cupLabel; report.league=state.league; report.leagueReward=leaguePrize; report.cupReward=cupReward;
  report.totalRewards=leaguePrize+cupReward; report.balance=state.balance;
  state.seasonReport=report;
  state.seasonHistory=Array.isArray(state.seasonHistory)?state.seasonHistory:[];
  state.seasonHistory.push(JSON.parse(JSON.stringify(report)));
- if(pos===1){showCelebration("league-title","League Champions!",`${state.club} have finished top of ${state.league}. The league title is yours!` ,"🏆","Season Report");}
- else if(state.cup?.winner===state.club){showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Enjoy the trophy and the prize money!`,"🏆","Season Report");}
+ if(pos===1){addAchievement("league-title",`${state.league} Champions`,`${state.club} won the ${state.league}.`,"🏆",{season:state.season,club:state.club});showCelebration("league-title","League Champions!",`${state.club} have finished top of ${state.league}. The league title is yours!` ,"🏆","Season Report");}
+ else if(state.cup?.winner===state.club){addAchievement("cup-win","Kup BiH Winners",`${state.club} won Kup BiH.`,"🏆",{season:state.season,club:state.club});showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Enjoy the trophy and the prize money!`,"🏆","Season Report");}
  else state.tab="Season Report";
  save(); render(); return true;
 }
@@ -481,9 +500,13 @@ function startNextSeason(){
  state.transferTick=0; state.summerTick=0; state.transferPool=[]; state.transfersDone=[];
  state.cup=null; state.seasonReport=null; state.playerStats={};
  loadClubSquad(state.club); normalizeXI(); initPlayerStats();
- if(userPromotion&&userPromotion.to==="Premijer Liga BiH")showCelebration("promotion","Promoted!",`${state.club} have earned promotion to ${userPromotion.to}. A new challenge awaits!`,"🎉","Home");
- else if(userPromotion)showCelebration("promotion","Promotion achieved!",`${state.club} have moved up from ${userPromotion.from} to ${userPromotion.to}.`,"🎉","Home");
- else state.tab="Home";
+ if(userPromotion&&userPromotion.to==="Premijer Liga BiH"){
+  addAchievement("promotion","Promotion achieved",`${state.club} promoted to ${userPromotion.to}.`,"🎉",{season:state.season,club:state.club});
+  showCelebration("promotion","Promoted!",`${state.club} have earned promotion to ${userPromotion.to}. A new challenge awaits!`,"🎉","Home");
+ }else if(userPromotion){
+  addAchievement("promotion","Promotion achieved",`${state.club} promoted from ${userPromotion.from} to ${userPromotion.to}.`,"🎉",{season:state.season,club:state.club});
+  showCelebration("promotion","Promotion achieved!",`${state.club} have moved up from ${userPromotion.from} to ${userPromotion.to}.`,"🎉","Home");
+ }else state.tab="Home";
  saveActiveCompetition(); save(); render();
 }
 function seasonReportPage(){
@@ -527,7 +550,7 @@ function normalizeXI(){
 }
 
 function initClub(){ensureClubSquads();loadClubSquad(state.club);initSeason(false);save()}
-function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","Results","Cup","Jobs","Transfers","Match Report","Season Report","Celebration"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
+function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","Results","Cup","Jobs","Transfers","Match Report","Season Report","History"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
 function ensureSeasonReady(){
   if(state.seasonReport) return;
   const clubs=leagueClubs();
@@ -551,7 +574,9 @@ function render(){
  ensureSeasonReady();
  if(state.matchday>=seasonMatchdays()&&!state.seasonReport){ finishSeason(); return; }
  tabs();
- ({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Match Report":matchReportPage,"Season Report":seasonReportPage,"Celebration":celebrationPage}[state.tab]||home)();
+ ({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Match Report":matchReportPage,"Season Report":seasonReportPage,History:historyPage}[state.tab]||home)();
+ document.getElementById("celebrationOverlay")?.remove();
+ if(state.celebration)celebrationOverlay();
 }
 function home(){
  const pos=standings().findIndex(x=>x.club===state.club)+1,total=seasonMatchdays();
@@ -894,7 +919,7 @@ function initCup(){if(state.cup&&state.cup.season===state.season)return;let club
 function cupCurrentFixture(){initCup();return state.cup.pending.find(f=>f.home===state.club||f.away===state.club)||null}
 function cupRoundName(r){return ["","Round of 32","Round of 16","Quarter-final","Semi-final","Final"][r]||"Cup"}
 function simulateCupGame(f){const diff=teamRating(f.home)+3.5-teamRating(f.away);let hg=Math.min(poissonish(Math.max(.3,1.2+diff*.055)),6),ag=Math.min(poissonish(Math.max(.25,1.05-diff*.045)),6);if(hg===ag){if(Math.random()<teamRating(f.home)/(teamRating(f.home)+teamRating(f.away)))hg++;else ag++;}return{...f,hg,ag};}
-function playCup(){initCup();const f=cupCurrentFixture();if(!f){alert("Your club has no cup match in this round.");return;}let games=state.cup.pending.map(x=>simulateCupGame(x));games.forEach(r=>updatePlayerStatsForResult(r,"cup"));state.cup.results.push(games);let winners=games.map(r=>r.hg>r.ag?r.home:r.away);let userResult=games.find(r=>r.home===state.club||r.away===state.club);if(userResult){const my=userResult.home===state.club?userResult.hg:userResult.ag,opp=userResult.home===state.club?userResult.ag:userResult.hg;state.rep+=my>opp?2:my===opp?0:-1; if(my>opp){const prize=cupRewardForRound(state.cup.round); state.balance+=prize; state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}}if(winners.length===1){state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5; if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Your club receives the winner's bonus!`,"🏆","Cup");}}else{let next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);}save();render();}
+function playCup(){initCup();const f=cupCurrentFixture();if(!f){alert("Your club has no cup match in this round.");return;}let games=state.cup.pending.map(x=>simulateCupGame(x));games.forEach(r=>updatePlayerStatsForResult(r,"cup"));state.cup.results.push(games);let winners=games.map(r=>r.hg>r.ag?r.home:r.away);let userResult=games.find(r=>r.home===state.club||r.away===state.club);if(userResult){const my=userResult.home===state.club?userResult.hg:userResult.ag,opp=userResult.home===state.club?userResult.ag:userResult.hg;state.rep+=my>opp?2:my===opp?0:-1; if(my>opp){const prize=cupRewardForRound(state.cup.round); state.balance+=prize; state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}}if(winners.length===1){state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5; if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;addAchievement("cup-win","Kup BiH Winners",`${state.club} won Kup BiH.`,"🏆",{season:state.season,club:state.club});showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Your club receives the winner's bonus!`,"🏆","Cup");}}else{let next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);}save();render();}
 function cup(){initCup();const f=cupCurrentFixture();const last=state.cup.results.length?state.cup.results[state.cup.results.length-1]:[];document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><div class="sub">${state.cup.winner?"Champion: "+state.cup.winner:state.cup.roundName+" • Knockout competition"}</div><div class="sub">Cup earnings: €${(state.cup.rewardMoney||0).toLocaleString()}</div>${f?`<div class="notice"><b>${f.home} vs ${f.away}</b><br>Your cup match is ready.</div><button class="primary" onclick="playCup()">Play cup match</button>`:`<div class="notice">Your club has been eliminated or is awaiting the next draw.</div>`}</div>${last.length?`<div class="card"><h3>Latest cup round</h3>${last.map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line);font-weight:${r.home===state.club||r.away===state.club?'800':'400'}"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join("")}</div>`:""}` }
 function jobs(){
  refreshJobBoard(false);
@@ -956,7 +981,8 @@ function buyPlayerById(id){
  const source=state.clubSquads[p.club]||[];const sourceIndex=source.findIndex(x=>String(x.id)===String(p.id));if(sourceIndex<0)return;
  state.balance-=p.fee;state.clubSquads[p.club]=source.filter((_,i)=>i!==sourceIndex);
  const moved=clonePlayer(source[sourceIndex]);state.players.push(moved);state.clubSquads[state.club]=state.players.map(clonePlayer);
- normalizeXI();state.transfersDone.push({name:moved.name,from:p.club,to:state.club,fee:p.fee,id:moved.id});
+ normalizeXI();state.transfersDone.push({name:moved.name,from:p.club,to:state.club,fee:p.fee,id:moved.id,season:state.season});
+ if(p.fee>=250000)addAchievement("major-transfer",`Major signing: ${moved.name}`,`${state.club} signed ${moved.name} from ${p.club} for €${Number(p.fee).toLocaleString()}.`,"💸",{season:state.season,club:state.club,fee:p.fee,player:moved.name});
  state.transferPool=state.transferPool.filter(x=>String(x.id)!==String(p.id));save();render();
 }
 function buyPlayer(i){const st=transferStatus();if(st.type==="closed")return;ensureTransferPool();const p=state.transferPool.filter(x=>x.club!==state.club)[i];if(p)buyPlayerById(p.id)}
@@ -969,7 +995,7 @@ function sellPlayer(id){
  state.players=state.players.filter(x=>String(x.id)!==String(id));
  syncCurrentClub();
  state.xi=state.xi.filter(x=>String(x)!==String(id));
- normalizeXI(); state.balance+=fee; state.transfersDone.push({name:p.name,from:state.club,to:"Sold",fee});
+ normalizeXI(); state.balance+=fee; state.transfersDone.push({name:p.name,from:state.club,to:"Sold",fee,season:state.season}); if(fee>=250000)addAchievement("major-sale",`Major sale: ${p.name}`,`${state.club} sold ${p.name} for €${Number(fee).toLocaleString()}.`,"💰",{season:state.season,club:state.club,fee,player:p.name});
  save();render();
 }
 function resetGame(){if(confirm("Reset local career? This also removes the local backup.")){localStorage.removeItem(SAVE_KEY);localStorage.removeItem(SAVE_BACKUP_KEY);location.reload()}}
