@@ -32,7 +32,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.20 Synchronized Leagues & Career Fixes</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.22 Squad Audit & Position Corrections</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
@@ -50,7 +50,7 @@ const seedPlayers={
 "FK Željezničar":[["GK","Vedad Muftic",24,69],["GK","Igor Roncevic",22,61],["GK","Tarik Abdulahovic",28,60],["DEF","Collin Seedorf",31,67],["DEF","Ermin Bicakcic",36,66],["DEF","Mustafa Sukilovic",23,64],["DEF","Edin Osmanovic",24,63],["DEF","Enes Alic",26,70],["DEF","Deni Memisevic",19,60],["DEF","Giovanni Troupee",28,63],["MID","Aleksa Pejic",27,68],["MID","Armin Hodzic",26,65],["MID","Ismail Oulad M'Hand",21,63],["MID","Samir Radovac",30,64],["MID","Dominik Prokop",29,67],["MID","Bojan Nastic",32,62],["MID","Madzid Sosic",23,72],["MID","Deni Milosevic",31,64],["ATT","Matej Cvetanoski",28,68],["ATT","Dzenan Sabic",20,65],["ATT","Muharem Huskovic",23,66],["ATT","Joey Konings",28,64],["ATT","Ibraheem Adams Olanrewaju",19,61]],
 "FK Borac Banja Luka":[["GK","Mladen Jurkas",18,70],["GK","Nikola Cetkovic",24,61],["DEF","Abel Pascual",30,67],["DEF","Domagoj Culina",21,64],["DEF","Sebastian Herrera",31,68],["DEF","Dusan Vrbic",23,63],["DEF","Erik Ridjan",20,60],["MID","Stefan Savic",32,69],["MID","Ante Roguljic",30,65],["ATT","Amar Milak",20,63],["ATT","Omar Sijaric",24,64],["ATT","Dani Romera",30,68],["ATT","Enver Kulasin",22,70],["MID","David Vukovic",23,68],["MID","Ognjen Radošević",24,62]],
 "HŠK Zrinjski Mostar":[["GK","Goran Karacic",29,70],["GK","Antonio Djakovic",25,63],["GK","Matej Bogdan",18,58],["DEF","Karlo Stapic",24,67],["DEF","Darick Kobie Morris",30,66],["DEF","Niko Vukancic",24,64],["DEF","David Karacic",20,62],["DEF","Hrvoje Barisic",35,65],["DEF","Slobodan Jakovljevic",37,63],["DEF","Petar Mamic",30,67],["DEF","Ante Susak",20,62],["DEF","Toma Palic",24,60],["DEF","Viktor Grbic",22,63],["DEF","Marko Vranjkovic",27,65],["DEF","Kerim Memija",30,66]],
-"FK Velež Mostar":[["GK","Faris Ribic",23,62],["GK","Emil Velic",31,63],["DEF","Adin Bajric",25,65],["DEF","Ajdin Nukic",26,64],["DEF","Mahir Rahimic",27,63],["DEF","Aldin Mesic",24,62],["MID","Said Duranovic",25,64],["MID","Abdullah Raffidine",28,66],["MID","Ayham Shhade",25,63],["MID","Nino Stojanovic",29,65],["MID","Anes Omerovic",25,64],["ATT","Mohamed Abdallah Abdallah",27,66],["ATT","Đani Salcin",25,62],["ATT","Armin Imamovic",22,60],["ATT","Vedad Abidovic",19,61],["ATT","Esmir Hasukic",24,64]],
+"FK Velež Mostar":[["GK","Faris Ribic",23,62],["GK","Emil Velic",31,63],["DEF","Adin Bajric",25,65],["DEF","Ajdin Nukic",26,64],["DEF","Mahir Rahimic",27,63],["DEF","Aldin Mesic",24,62],["DEF","Ante Hrkać",34,68],["MID","Said Duranovic",25,64],["MID","Abdullah Raffidine",28,66],["MID","Ayham Shhade",25,63],["MID","Nino Stojanovic",29,65],["MID","Anes Omerovic",25,64],["ATT","Mohamed Abdallah Abdallah",27,66],["ATT","Đani Salcin",25,62],["ATT","Armin Imamovic",22,60],["ATT","Vedad Abidovic",19,61],["ATT","Esmir Hasukic",24,64]],
 "NK Široki Brijeg":[["GK","Ivan Puljic",24,61],["GK","Eugen Ciban",21,58],["DEF","Ivan Maric",23,65],["DEF","Ivan Pranjic",26,63],["DEF","Nediljko Stjepanovic",22,62],["DEF","Hubert Sobol",26,61],["MID","Mato Stanic",28,67],["MID","Petar Petrisko",24,62],["MID","Ivano Srdoc",21,64],["ATT","Ilya Chernyak",24,65],["ATT","Ivan Delic",26,64],["ATT","Saydou Bangura",23,63],["ATT","Petar Radeljic",22,61]],
 "FK Sloga Meridian":[["GK","Nikola Vukovic",28,60],["GK","Vladan Kovacevic",23,57],["DEF","Petar Kunic",32,62],["DEF","Nikola Mandic",31,61],["DEF","Marko Mijic",29,61],["DEF","Stefan Jokic",25,60],["MID","Dejan Bosnjak",28,62],["MID","Milos Stojanovic",27,61],["MID","Vladimir Arsic",25,60],["ATT","Nikola Ninkovic",31,64],["ATT","Sasa Jovanovic",29,62],["ATT","Nemanja Zlatkovic",25,60]],
 "FK Radnik Bijeljina":[["GK","Dusan Markovic",28,63],["GK","Srdjan Nedic",19,57],["DEF","Blondon Meyapya",25,64],["DEF","Jovan Pavlovic",26,61],["DEF","Patrik Klancir",22,60],["DEF","Slavisa Radovic",32,62],["DEF","Djordje Cosic",30,61],["DEF","Andrija Markovic",23,63],["DEF","Bozidar Dimitric",18,60],["MID","Huso Karjasevic",29,64],["MID","Pedro Torres",27,61],["MID","Felix Osei Agyemang",19,58],["MID","Andrej Krstic",20,59],["MID","Nebojsa Gavric",34,59],["MID","Mohamed Ghorzi",26,65],["MID","Emanuel Crnko",27,64],["ATT","Danilo Teodorovic",24,65],["ATT","Antoine Ijoma",21,62],["ATT","Njegos Kupusovic",25,64]],
@@ -110,11 +110,31 @@ const REAL_PRVA_SQUADS={
 "FK Famos Vojkovići":[["ATT","Pedro Lobo"],["ATT","Aimar Balić"],["ATT","Stefan Radaković"],["ATT","Luka Asentić"],["ATT","Danel Blažić"],["ATT","Đorđe Golijanin"],["ATT","Luka Andrić"],["MID","Slobodan Vučinić"],["MID","Sanin Mesić"],["MID","Benjamin Babić"],["MID","Zehrudin Mehmedović"],["MID","Mihajlo Kovač"],["MID","Marko Tešanović"],["MID","Mladen Drakul"],["MID","Đorđe Timotija"],["MID","Nikola Danilović"],["DEF","Sergej Tomić"],["DEF","Marko Škrba"],["DEF","Marko Marković"],["DEF","Stefan Ristivojević"],["GK","Adel Duškaj"],["GK","Sergej Bjelica"],["GK","Marko Terzić"]],
 "FK Majevica Lopare":[["ATT","Matej Jovanović"],["ATT","Mile Teodorović"],["ATT","Radovan Jokanović"],["ATT","Branko Kecman"],["ATT","Rade Ristić"],["ATT","Neđo Gajić"],["ATT","Damjan Petrović"],["ATT","Ilija Despotović"],["MID","Ognjen Maksimović"],["MID","Nemanja Marić"],["MID","Anđelo Delić"],["MID","Simo Bogdanović"],["MID","Saša Varešić"],["MID","Dejan Davidović"],["MID","Stefan Petrović"],["MID","Duško Pajkanović"],["MID","Ljubiša Ristić"],["MID","Jovan Ristić"],["MID","Nikola Mazić"],["MID","Đorđe Marković"],["DEF","Stefan Spasojević"],["DEF","Dragan Cvijetinović"],["DEF","Boban Jolović"],["DEF","Miroslav Kostić"],["DEF","Živan Marković"],["GK","Miloš Papić"],["GK","Rade Babić"],["GK","Miroslav Ilić"]]
 };
+// Position and roster audit based on publicly listed 2026/27 squad categories.
+// Positions use the game's broad categories (GK/DEF/MID/ATT); OVR remains a game estimate.
+const ROSTER_AUDIT={
+ "FK Sarajevo":{
+  additions:[["GK","Ibrahim Zahirović",17,58],["DEF","Matija Glogovac",19,60],["DEF","Stjepan Pidro",27,62],["MID","Vito Leto",16,57],["MID","Kenan Vrban",18,58],["ATT","Ivan Šarić",24,62],["ATT","Jovan Awusi",19,59],["ATT","Amar Cerić",17,56],["ATT","Mihael Kuprešak",25,65]],
+  positions:{"Ivan Banić":"GK","Sanin Mušija":"GK","Ibrahim Zahirović":"GK","Shane Maroodza":"DEF","Renato Gojković":"DEF","Jovan Ivanišević":"DEF","Filip Kosi":"DEF","Matija Glogovac":"DEF","Amar Beganović":"DEF","Luka Hujber":"DEF","Luka Dajčer":"DEF","Souleymane Meite":"DEF","Stjepan Pidro":"DEF","Rijad Telalović":"MID","Antonio Galešić":"MID","Agon Elezi":"MID","Vito Leto":"MID","Sergej Ignatkov":"MID","Kenan Vrban":"MID","Gojko Cimirot":"MID","Ivan Šarić":"ATT","Leo Mikić":"ATT","Francis Kyeremeh":"ATT","Ricardo Caraballo":"ATT","Jonathan Agyekum":"ATT","Filip Živković":"ATT","Jovan Awusi":"ATT","Amar Cerić":"ATT","Mihael Kuprešak":"ATT","Bartol Barišić":"ATT"}
+ },
+ "FK Velež Mostar":{
+  additions:[["GK","Eldin Mataradžić",18,56],["DEF","Filip Šetić",19,57],["DEF","Bojan Zulović",18,56],["MID","Dino Halilović",20,59],["MID","Dino Puce",20,59],["MID","Kerim Džuliman",20,58],["MID","Benjamin Leković",18,57],["MID","Ahmed Bešagić",27,60],["MID","Muhamed Bešić",18,57],["ATT","Beni Redžić",23,61],["ATT","Anes Pajević",17,55],["ATT","Faruk Dževahirić",18,56],["ATT","Luka Ignatov",23,59],["ATT","Carlo Mateković",22,60]],
+  positions:{"Faris Ribić":"GK","Eldin Mataradžić":"GK","Emil Velić":"GK","Mohamed Abdallah Abdallah":"DEF","Abdullah Raffidine":"MID","Ante Hrkać":"MID","Ajdin Nukić":"DEF","Anes Omerović":"DEF","Said Duranović":"DEF","Adin Bajrić":"DEF","Filip Šetić":"DEF","Bojan Zulović":"DEF","Dino Halilović":"MID","Dino Puce":"MID","Kerim Džuliman":"MID","Benjamin Leković":"MID","Ahmed Bešagić":"MID","Muhamed Bešić":"MID","Đani Salčin":"MID","Ayham Shhade":"MID","Nino Stojanović":"ATT","Armin Imamović":"DEF","Aldin Mešić":"ATT","Beni Redžić":"ATT","Anes Pajević":"ATT","Faruk Dževahirić":"ATT","Vedad Abidović":"ATT","Luka Ignatov":"ATT","Carlo Mateković":"ATT","Esmir Hasukić":"ATT"}
+ }
+};
+function normPlayerName(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/gi,"").toLowerCase();}
+function applyRosterAudit(club,players){
+ const audit=ROSTER_AUDIT[club]; if(!audit)return players;
+ const byName=new Map(players.map(p=>[normPlayerName(p.name),p]));
+ for(const [name,pos] of Object.entries(audit.positions||{})){const player=byName.get(normPlayerName(name));if(player)player.pos=pos;}
+ for(const item of audit.additions||[]){const [pos,name,age,ovr]=item;const key=normPlayerName(name);if(!byName.has(key)){const player={id:`${club}::${key}`,pos,name,age,ovr};players.push(player);byName.set(key,player);}}
+ return players;
+}
 function playersFor(club){
- if(seedPlayers[club]) return seedPlayers[club].map((x,i)=>({id:i,pos:x[0],name:x[1],age:x[2],ovr:x[3]}));
- const real=REAL_PRVA_SQUADS[club];
- if(real) return real.map((x,i)=>({id:i,pos:x[0],name:x[1],age:19+((i*3)%17),ovr:54+((i*7)%13)}));
- return [];
+ let players=[];
+ if(seedPlayers[club]) players=seedPlayers[club].map((x,i)=>({id:i,pos:x[0],name:x[1],age:x[2],ovr:x[3]}));
+ else {const real=REAL_PRVA_SQUADS[club];if(real)players=real.map((x,i)=>({id:i,pos:x[0],name:x[1],age:19+((i*3)%17),ovr:54+((i*7)%13)}));}
+ return applyRosterAudit(club,players);
 }
 
 const formations={
@@ -132,8 +152,8 @@ const TEAM_RATING={"FK Sarajevo":72,"FK Željezničar":71,"FK Borac Banja Luka":
 const DEFAULT_RATING=56;
 const SAVE_KEY="bhfm";
 const SAVE_BACKUP_KEY="bhfm_backup";
-const SAVE_VERSION=4;
-const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,jobNotice:"",saveVersion:SAVE_VERSION};
+const SAVE_VERSION=6;
+const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],cup:null,playerStats:{},seasonHistory:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,jobNotice:"",celebration:null,saveVersion:SAVE_VERSION};
 function isObject(value){return !!value&&typeof value==="object"&&!Array.isArray(value)}
 function normalizeSavedState(raw){
  if(!isObject(raw))return null;
@@ -156,6 +176,7 @@ function normalizeSavedState(raw){
  if(typeof merged.tab!=="string")merged.tab=DEFAULT_STATE.tab;
  if(!["league","cup","all"].includes(merged.statsCompetition))merged.statsCompetition="league";
  if(!isObject(merged.seasonReport)&&merged.seasonReport!==null)merged.seasonReport=null;
+ if(!isObject(merged.celebration))merged.celebration=null;
  merged.saveVersion=SAVE_VERSION;
  return merged;
 }
@@ -190,7 +211,19 @@ function ensureClubSquads(){
    const existing=state.clubSquads[state.club];
    if(!existing||!existing.length)state.clubSquads[state.club]=state.players.map((p,i)=>({...p,id:p.id??`${state.club}::${i}`}));
  }
+ // Targeted roster migration: add Ante Hrkać to Velež saves created before his seed entry existed.
+ const velez=state.clubSquads["FK Velež Mostar"];
+ if(Array.isArray(velez)&&!velez.some(p=>String(p.name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()==="ante hrkac")){
+   velez.push({id:"FK Velež Mostar::ante-hrkac",pos:"MID",name:"Ante Hrkać",age:34,ovr:68});
+ }
+ if(state.club==="FK Velež Mostar"&&Array.isArray(state.players)&&!state.players.some(p=>String(p.name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()==="ante hrkac")){
+   state.players.push({id:"FK Velež Mostar::ante-hrkac",pos:"MID",name:"Ante Hrkać",age:34,ovr:68});
+ }
+ // Apply verified broad-position corrections and missing-player additions to existing saves too.
+ Object.entries(state.clubSquads).forEach(([club,squad])=>{if(Array.isArray(squad))state.clubSquads[club]=applyRosterAudit(club,squad);});
+ if(Array.isArray(state.players))state.players=applyRosterAudit(state.club,state.players);
 }
+
 function upgradeRealSquadsV012(){
  Object.keys(REAL_PRVA_SQUADS).forEach(club=>{
   const real=REAL_PRVA_SQUADS[club]; const cur=state.clubSquads[club]; if(!Array.isArray(cur)||!cur.length)return;
@@ -363,6 +396,19 @@ function cupRewardForRound(round){
  // Reward is paid when a club wins/passes a round: R32 20k, R16 40k, QF 80k, SF 160k.
  return 20000*Math.pow(2,Math.max(0,round-1));
 }
+function showCelebration(kind,title,message,emoji="🏆",returnTab="Home"){
+ state.celebration={kind,title,message,emoji,returnTab,season:state.season};
+ state.tab="Celebration";
+}
+function dismissCelebration(){
+ const target=state.celebration?.returnTab||"Home";
+ state.celebration=null;state.tab=target;save();render();
+}
+function celebrationPage(){
+ const c=state.celebration;
+ if(!c){state.tab="Home";home();return;}
+ document.getElementById("app").innerHTML=`<div class="card" style="text-align:center;padding:28px 16px;background:linear-gradient(160deg,#1c2b20,#151b23 68%);border-color:#4ade80"><div style="font-size:64px;line-height:1.3">${c.emoji||"🏆"}</div><div class="sub" style="letter-spacing:2px;margin:8px 0">CONGRATULATIONS</div><h2 style="font-size:28px;margin:12px 0">${c.title}</h2><p style="font-size:15px;line-height:1.6">${c.message}</p><div class="notice" style="margin:18px 0">${state.club} • ${currentSeasonLabel()}</div><button class="primary" style="width:100%" onclick="dismissCelebration()">Continue</button></div>`;
+}
 function finishSeason(){
  if(state.matchday<seasonMatchdays()||state.seasonReport)return false;
  syncCurrentClub();
@@ -392,7 +438,9 @@ function finishSeason(){
  state.seasonReport=report;
  state.seasonHistory=Array.isArray(state.seasonHistory)?state.seasonHistory:[];
  state.seasonHistory.push(JSON.parse(JSON.stringify(report)));
- state.tab="Season Report";
+ if(pos===1){showCelebration("league-title","League Champions!",`${state.club} have finished top of ${state.league}. The league title is yours!` ,"🏆","Season Report");}
+ else if(state.cup?.winner===state.club){showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Enjoy the trophy and the prize money!`,"🏆","Season Report");}
+ else state.tab="Season Report";
  save(); render(); return true;
 }
 function standingsForTable(table){return Object.values(table||{}).sort((a,b)=>b.pts-a.pts||(b.gf-b.ga)-(a.gf-a.ga)||b.gf-a.gf||b.w-a.w||a.club.localeCompare(b.club));}
@@ -423,6 +471,7 @@ function startNextSeason(){
  if(!state.seasonReport)return;
  syncCurrentClub();saveActiveCompetition();
  const standingsByLeague=settleAllPlayableLeagues();const movement=applyPromotionsRelegations(standingsByLeague);
+ const userPromotion=movement.find(x=>x.club===state.club&&x.to!==x.from);
  state.season+=1; state.competitionStates={}; state.matchday=0;
  state.league=Object.keys(leagues).find(l=>leagues[l].includes(state.club))||state.league;
  state.fixtures=generateFixturesForLeague(leagueClubs(),state.league); state.table=makeTable(); state.results=[];
@@ -431,7 +480,10 @@ function startNextSeason(){
  state.transferTick=0; state.summerTick=0; state.transferPool=[]; state.transfersDone=[];
  state.cup=null; state.seasonReport=null; state.playerStats={};
  loadClubSquad(state.club); normalizeXI(); initPlayerStats();
- state.tab="Home"; saveActiveCompetition(); save(); render();
+ if(userPromotion&&userPromotion.to==="Premijer Liga BiH")showCelebration("promotion","Promoted!",`${state.club} have earned promotion to ${userPromotion.to}. A new challenge awaits!`,"🎉","Home");
+ else if(userPromotion)showCelebration("promotion","Promotion achieved!",`${state.club} have moved up from ${userPromotion.from} to ${userPromotion.to}.`,"🎉","Home");
+ else state.tab="Home";
+ saveActiveCompetition(); save(); render();
 }
 function seasonReportPage(){
  const r=state.seasonReport;
@@ -474,7 +526,7 @@ function normalizeXI(){
 }
 
 function initClub(){ensureClubSquads();loadClubSquad(state.club);initSeason(false);save()}
-function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","Results","Cup","Jobs","Transfers","Match Report","Season Report"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
+function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","Results","Cup","Jobs","Transfers","Match Report","Season Report","Celebration"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
 function ensureSeasonReady(){
   if(state.seasonReport) return;
   const clubs=leagueClubs();
@@ -498,7 +550,7 @@ function render(){
  ensureSeasonReady();
  if(state.matchday>=seasonMatchdays()&&!state.seasonReport){ finishSeason(); return; }
  tabs();
- ({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Match Report":matchReportPage,"Season Report":seasonReportPage}[state.tab]||home)();
+ ({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Match Report":matchReportPage,"Season Report":seasonReportPage,"Celebration":celebrationPage}[state.tab]||home)();
 }
 function home(){
  const pos=standings().findIndex(x=>x.club===state.club)+1,total=seasonMatchdays();
@@ -776,7 +828,7 @@ function initCup(){if(state.cup&&state.cup.season===state.season)return;let club
 function cupCurrentFixture(){initCup();return state.cup.pending.find(f=>f.home===state.club||f.away===state.club)||null}
 function cupRoundName(r){return ["","Round of 32","Round of 16","Quarter-final","Semi-final","Final"][r]||"Cup"}
 function simulateCupGame(f){const diff=teamRating(f.home)+3.5-teamRating(f.away);let hg=Math.min(poissonish(Math.max(.3,1.2+diff*.055)),6),ag=Math.min(poissonish(Math.max(.25,1.05-diff*.045)),6);if(hg===ag){if(Math.random()<teamRating(f.home)/(teamRating(f.home)+teamRating(f.away)))hg++;else ag++;}return{...f,hg,ag};}
-function playCup(){initCup();const f=cupCurrentFixture();if(!f){alert("Your club has no cup match in this round.");return;}let games=state.cup.pending.map(x=>simulateCupGame(x));games.forEach(r=>updatePlayerStatsForResult(r,"cup"));state.cup.results.push(games);let winners=games.map(r=>r.hg>r.ag?r.home:r.away);let userResult=games.find(r=>r.home===state.club||r.away===state.club);if(userResult){const my=userResult.home===state.club?userResult.hg:userResult.ag,opp=userResult.home===state.club?userResult.ag:userResult.hg;state.rep+=my>opp?2:my===opp?0:-1; if(my>opp){const prize=cupRewardForRound(state.cup.round); state.balance+=prize; state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}}if(winners.length===1){state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5; if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;}}else{let next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);}save();render();}
+function playCup(){initCup();const f=cupCurrentFixture();if(!f){alert("Your club has no cup match in this round.");return;}let games=state.cup.pending.map(x=>simulateCupGame(x));games.forEach(r=>updatePlayerStatsForResult(r,"cup"));state.cup.results.push(games);let winners=games.map(r=>r.hg>r.ag?r.home:r.away);let userResult=games.find(r=>r.home===state.club||r.away===state.club);if(userResult){const my=userResult.home===state.club?userResult.hg:userResult.ag,opp=userResult.home===state.club?userResult.ag:userResult.hg;state.rep+=my>opp?2:my===opp?0:-1; if(my>opp){const prize=cupRewardForRound(state.cup.round); state.balance+=prize; state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}}if(winners.length===1){state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5; if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Your club receives the winner's bonus!`,"🏆","Cup");}}else{let next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);}save();render();}
 function cup(){initCup();const f=cupCurrentFixture();const last=state.cup.results.length?state.cup.results[state.cup.results.length-1]:[];document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><div class="sub">${state.cup.winner?"Champion: "+state.cup.winner:state.cup.roundName+" • Knockout competition"}</div><div class="sub">Cup earnings: €${(state.cup.rewardMoney||0).toLocaleString()}</div>${f?`<div class="notice"><b>${f.home} vs ${f.away}</b><br>Your cup match is ready.</div><button class="primary" onclick="playCup()">Play cup match</button>`:`<div class="notice">Your club has been eliminated or is awaiting the next draw.</div>`}</div>${last.length?`<div class="card"><h3>Latest cup round</h3>${last.map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line);font-weight:${r.home===state.club||r.away===state.club?'800':'400'}"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join("")}</div>`:""}` }
 function jobs(){
  refreshJobBoard(false);
