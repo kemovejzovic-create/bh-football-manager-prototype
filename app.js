@@ -264,6 +264,16 @@ function maybeGenerateAITransferOffer(windowType){
  const item={playerId:offer.player.id,playerName:offer.player.name,from:state.club,to:offer.buyer,fee:offer.fee,season:state.season,window:windowType,createdMatchday:state.matchday};
  state.transferOffers.push(item);return item;
 }
+function isAITransferOfferActive(offer){
+ const createdMatchday=Number(offer?.createdMatchday);
+ if(!offer||offer.season!==state.season||offer.from!==state.club||!Number.isFinite(createdMatchday)||state.matchday>createdMatchday)return false;
+ const current=transferStatus();
+ if(current.type===offer.window)return true;
+ // The final mid-season tick advances the matchday past the window before
+ // the manager gets a chance to review offers generated during that tick.
+ const midEnd=Math.max(1,Math.floor(seasonMatchdays()/2)-1)+3;
+ return offer.window==="mid"&&current.type==="closed"&&state.matchday===midEnd+1&&state.matchday===createdMatchday;
+}
 function runAITransferTick(windowType){
  ensureClubSquads();ensureAIBudgets();
  maybeGenerateAITransferOffer(windowType);
@@ -959,7 +969,7 @@ function takeJob(c,fromOffer=false){
 
 function acceptAITransferOffer(index){
  const offer=state.transferOffers?.[index];ensureAIBudgets();ensureClubSquads();
- if(!offer||offer.season!==state.season||offer.from!==state.club||transferStatus().type!==offer.window){state.jobNotice="That transfer offer has expired.";state.transferOffers=(state.transferOffers||[]).filter((_,i)=>i!==index);save();render();return false;}
+ if(!isAITransferOfferActive(offer)){state.jobNotice="That transfer offer has expired.";state.transferOffers=(state.transferOffers||[]).filter((_,i)=>i!==index);save();render();return false;}
  const player=state.players.find(p=>String(p.id)===String(offer.playerId)),buyer=state.clubSquads[offer.to]||[];
  if(!player||buyer.length>=27||Number(state.aiBudgets[offer.to]||0)<offer.fee){state.jobNotice="That club can no longer complete the transfer.";state.transferOffers.splice(index,1);save();render();return false;}
  state.players=state.players.filter(p=>String(p.id)!==String(player.id));state.clubSquads[state.club]=state.players.map(clonePlayer);
@@ -976,7 +986,7 @@ function transfers(){
  const sort=state.transferSort||"position";
  const sorted=[...available].sort((a,b)=>sort==="rating"?(b.ovr-a.ovr)||a.name.localeCompare(b.name):sort==="price"?(a.fee-b.fee)||a.name.localeCompare(b.name):(a.pos.localeCompare(b.pos)||b.ovr-a.ovr||a.name.localeCompare(b.name)));
  const recentDeals=(state.transfersDone||[]).filter(t=>t.season===state.season).slice(-8).reverse();
- const activeOffers=(state.transferOffers||[]).filter(o=>o.season===state.season&&o.from===state.club&&o.window===st.type);
+ const activeOffers=(state.transferOffers||[]).filter(isAITransferOfferActive);
  document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p class="sub">${st.label}</p>
  <div class="row"><span><b>Sort transfer pool</b></span><select onchange="state.transferSort=this.value;save();render()"><option value="position" ${sort==="position"?"selected":""}>Position</option><option value="rating" ${sort==="rating"?"selected":""}>Rating</option><option value="price" ${sort==="price"?"selected":""}>Price</option></select></div>
  ${st.type==="mid"?`<div class="notice">Mid-season window lasts 4 matchday ticks. AI clubs can sign and sell squad players during each open matchday.</div>`:""}
