@@ -620,7 +620,7 @@ function normalizeXI(){
 }
 
 function initClub(){ensureClubSquads();loadClubSquad(state.club);initSeason(false);save()}
-function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","Results","Cup","Jobs","Transfers","Match Report","Season Report","History"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
+function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","All Leagues","Results","Cup","Jobs","Transfers","Match Report","Season Report","History"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
 function ensureSeasonReady(){
   if(state.seasonReport) return;
   const clubs=leagueClubs();
@@ -644,7 +644,7 @@ function render(){
  ensureSeasonReady();
  if(state.matchday>=seasonMatchdays()&&!state.seasonReport){ finishSeason(); return; }
  tabs();
- ({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Match Report":matchReportPage,"Season Report":seasonReportPage,History:historyPage}[state.tab]||home)();
+ ({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,"All Leagues":allLeaguesPage,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Match Report":matchReportPage,"Season Report":seasonReportPage,History:historyPage}[state.tab]||home)();
  document.getElementById("celebrationOverlay")?.remove();
  if(state.celebration)celebrationOverlay();
  scheduleLiveMatchEvent();
@@ -886,7 +886,6 @@ function combineMatchSegments(first,second,finalHome,finalAway){
 function liveMatchEvents(pending){return pending.phase==="first"?pending.firstHalf?.events||[]:pending.secondHalf?.events||[]}
 function scheduleLiveMatchEvent(){
  const pending=state.pendingMatch,pb=pending?.playback;
- if(pb?.goalOverlay){pb.goalOverlay=null;pb.paused=false;}
  if(matchPlaybackTimer!==null||state.tab!=="Match Report"||!pb||pb.paused||!(["first","second"].includes(pending.phase)))return;
  const event=liveMatchEvents(pending)[pb.index];
  const delay=event?.type==="goal"?2600:event?.type==="half"?900:1400;
@@ -895,13 +894,13 @@ function scheduleLiveMatchEvent(){
 function advanceLiveMatchEvent(){
  const pending=state.pendingMatch,pb=pending?.playback;
  if(!pending||!pb||!(["first","second"].includes(pending.phase)))return;
- pb.goalOverlay=null;
- const event=liveMatchEvents(pending)[pb.index];
+  pb.goalOverlay=null;
+  const event=liveMatchEvents(pending)[pb.index];
  if(!event){if(pending.phase==="first"){pending.phase="halftime";pb.paused=true;}else completePendingMatch();save();render();return;}
  pb.index++;pb.shown=Array.isArray(pb.shown)?pb.shown:[];pb.shown.push(event);
  if(event.type==="goal"){
   const side=event.team===pending.fixture.home?0:1;pb.score=Array.isArray(pb.score)?pb.score:[0,0];pb.score[side]++;
-  pb.goalOverlay=null;
+  pb.goalOverlay={event,team:event.team,score:pb.score.slice()};
  }
  if(event.type==="half"){pending.phase="halftime";pb.paused=true;}
  save();render();
@@ -1009,7 +1008,7 @@ function matchReportPage(){
    const pb=p.playback||(p.playback={segment:p.phase,index:0,shown:[],score:p.phase==="second"?[m.hg,m.ag]:[0,0],goalOverlay:null,paused:false});
    const events=(pb.shown||[]).map(e=>`<div class="live-event"><b class="live-minute">${e.minute}'</b><span class="live-icon">${liveEventIcon(e.type)}</span><span>${e.text}</span></div>`).join("");
    const segment=p.phase==="first"?"First half":"Second half";
-   document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday+1} • ${segment}</div><h2 class="live-score">${p.fixture.home} <span>${pb.score?.[0]||0} – ${pb.score?.[1]||0}</span> ${p.fixture.away}</h2></div><div class="card"><div class="row"><h3>Live commentary</h3><span class="sub">Events play automatically</span></div><div id="liveEventFeed" class="live-feed" aria-live="polite">${events||'<div class="sub" style="padding:12px 0">Kick-off. The teams are settling into the match.</div>'}</div><div class="live-controls"><button onclick="toggleLiveMatchPlayback()">${pb.paused?"Resume":"Pause"}</button></div></div>`;
+   document.getElementById("app").innerHTML=`${pb.goalOverlay?`<div class="goal-overlay" role="status" aria-live="assertive"><div class="goal-panel"><div class="goal-word">GOAL!</div><div class="goal-score">${pb.goalOverlay.score[0]} – ${pb.goalOverlay.score[1]}</div><div class="goal-copy">${pb.goalOverlay.team} • ${pb.goalOverlay.event.text}</div></div></div>`:""}<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday+1} • ${segment}</div><h2 class="live-score">${p.fixture.home} <span>${pb.score?.[0]||0} – ${pb.score?.[1]||0}</span> ${p.fixture.away}</h2></div><div class="card"><div class="row"><h3>Live commentary</h3><span class="sub">Events play automatically</span></div><div id="liveEventFeed" class="live-feed" aria-live="polite">${events||'<div class="sub" style="padding:12px 0">Kick-off. The teams are settling into the match.</div>'}</div><div class="live-controls"><button onclick="toggleLiveMatchPlayback()">${pb.paused?"Resume":"Pause"}</button></div></div>`;
    const feed=document.getElementById("liveEventFeed");if(feed)feed.scrollTop=feed.scrollHeight;
    return;
   }
@@ -1065,7 +1064,18 @@ function resultsPage(){
  const rounds=state.results.slice().reverse();
  document.getElementById("app").innerHTML=`<div class="card"><h2>Matchday Results</h2><p class="sub">All completed league matchdays. Your club is highlighted.</p></div>${rounds.length?rounds.map((rs,ri)=>{const md=state.results.length-ri;return `<div class="card"><h3>Matchday ${md}</h3>${rs.map(r=>`<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line);font-weight:${r.home===state.club||r.away===state.club?'800':'400'}"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join("")}</div>`}).join(""):`<div class="card"><div class="sub">No matchdays played yet.</div></div>`}`
 }
-function league(){const rows=standings();document.getElementById("app").innerHTML=`<div class="card"><h2>${state.league}</h2><div class="sub">After matchday ${state.matchday}. All fixtures are simulated simultaneously.</div></div><div class="card" style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>#</th><th style="text-align:left">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead><tbody>${rows.map((r,i)=>`<tr style="border-top:1px solid var(--line);${r.club===state.club?'font-weight:800':''}"><td style="padding:8px 4px">${i+1}</td><td style="padding:8px 4px;text-align:left">${r.club}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf-r.ga}</td><td>${r.pts}</td></tr>`).join("")}</tbody></table></div><div class="card"><h3>Recent results</h3>${latestRoundHTML()}</div>`}
+function leagueTableHTML(rows,highlightClub="") {return `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>#</th><th style="text-align:left">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr></thead><tbody>${rows.map((r,i)=>`<tr style="border-top:1px solid var(--line);${r.club===highlightClub?'font-weight:800':''}"><td style="padding:8px 4px">${i+1}</td><td style="padding:8px 4px;text-align:left">${r.club}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.gf-r.ga}</td><td>${r.pts}</td></tr>`).join("")}</tbody></table></div>`}
+function league(){const rows=standings();document.getElementById("app").innerHTML=`<div class="card"><h2>${state.league}</h2><div class="sub">After matchday ${state.matchday}. All fixtures are simulated simultaneously.</div></div><div class="card">${leagueTableHTML(rows,state.club)}</div><div class="card"><h3>Recent results</h3>${latestRoundHTML()}</div>`}
+function allLeaguesPage(){
+ const sections=Object.keys(leagues).map(name=>{
+  const clubs=playableClubsForLeague(name);if(clubs.length<2)return "";
+  const snap=name===state.league?{matchday:state.matchday,table:state.table}:ensureCompetitionSnapshot(name);
+  const rows=standingsForTable(snap?.table||{}),current=name===state.league;
+  return `<details class="card all-league" ${current?"open":""}><summary><b>${name}</b><span class="sub">Matchday ${snap?.matchday||0}/${leagueRoundCount(name)} • ${rows.length} clubs${current?" • Your league":""}</span></summary>${leagueTableHTML(rows,current?state.club:"")}</details>`;
+ }).join("");
+ save();
+ document.getElementById("app").innerHTML=`<div class="card"><h2>All Leagues</h2><p class="sub">Every populated competition in your save. Tables update together after each completed matchday.</p></div>${sections}`;
+}
 function cupClubs(){return shuffle(["FK Sarajevo","FK Željezničar","FK Borac Banja Luka","HŠK Zrinjski Mostar","FK Velež Mostar","NK Široki Brijeg","FK Sloga Doboj","FK Radnik Bijeljina","NK Čelik Zenica","BSK Banja Luka","NK Bratstvo Gračanica","FK Igman Konjic","HNK Čapljina","FK Rudar Kakanj","NK Vitez","HNK Tomislav","FK Budućnost Banovići","NK TOŠK Tešanj","NK Zvijezda Gradačac","FK Radnik Hadžići","NK GOŠK Gabela","FK Sloboda Tuzla","NK Travnik","NK Jedinstvo Bihać","NK Stupčanica Olovo","HŠK Posušje","FK Mladost Doboj Kakanj","FK Goražde","NK Vis Simm-Bau","NK Gradina Srebrenik","FK Tuzla City","FK Rudar Prijedor"])}
 function initCup(){if(state.cup&&state.cup.season===state.season)return;let clubs=cupClubs();state.cup={season:state.season,round:1,roundName:"Round of 32",pending:clubs.map((c,i)=>({home:c,away:clubs[i^1]})).filter((x,i,a)=>i%2===0),results:[],winner:null,played:false,rewardMoney:0};}
 function cupCurrentFixture(){initCup();return state.cup.pending.find(f=>f.home===state.club||f.away===state.club)||null}
