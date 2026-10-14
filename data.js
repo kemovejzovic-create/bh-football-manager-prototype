@@ -11,6 +11,23 @@ const leagues={
 "Druga liga RS – Zapad":["FK Polet 1926 Brod","FK Ljubić Prnjavor","FK Sloboda Mrkonjić Grad","FK Željezničar Banja Luka","FK Borac Šamac","OFK Brdo Hambarine","FK Gorica Šipovo","FK Dubrave","FK Bratstvo Kozinci","FK Proleter Teslić","FK Sloga Trn","FK Tekstilac Derventa","FK Modriča Alfa","FK Crni Vrh Jaružani"],
 "Druga liga RS – Istok":["FK Glasinac Sokolac","FK Guber Srebrenica","FK Drina HE Višegrad","FK Ilićka 01 Brčko","FK Mladost Gacko","FK Mladost Rogatica","FK Proleter Dvorovi","FK Stakorina Čajniče","FK Budućnost Pilica","FK Hercegovac Bileća","FK Podrinje Janja","FK Vlasenica","FK Jedinstvo Roćević","FK Rudar 1925 Ugljevik","FK Trnovica","FK Jedinstvo Brodac"]
 };
+// Published stadium capacities where available; lower-tier fallback values are estimated.
+const STADIUM_DATA={
+ "FK Sarajevo":["Asim Ferhatović Hase Stadium",34700],"FK Željezničar":["Grbavica Stadium",13057],
+ "FK Borac Banja Luka":["Banja Luka City Stadium",10030],"HŠK Zrinjski Mostar":["Bijeli Brijeg Stadium",9000],
+ "FK Velež Mostar":["Rođeni Stadium",7000],"NK Široki Brijeg":["Pecara Stadium",7000],
+ "FK Sloga Doboj":["Luke Stadium",3000],"FK Radnik Bijeljina":["Bijeljina City Stadium",6000],
+ "NK Čelik Zenica":["Bilino Polje",13694],"BSK Banja Luka":["Krupa na Vrbasu Stadium",3500],
+ "HŠK Posušje":["Mokri Dolac Stadium",5040],"FK Sloboda Tuzla":["Tušanj Stadium",7200],
+ "FK Igman Konjic":["Konjic City Stadium",5000],"NK GOŠK Gabela":["Perica-Pero Pavlović Stadium",3000],
+ "NK Bratstvo Gračanica":["Luke Stadium, Gračanica",5200],"FK Budućnost Banovići":["Budućnost Stadium",8500],
+ "NK Jedinstvo Bihać":["Pod Borićima Stadium",7504],"FK Radnik Hadžići":["Hadžići City Stadium",1200],
+ "NK Stupčanica Olovo":["Olovo City Stadium",3000],"HNK Tomislav":["Tomislav City Stadium",2000],
+ "NK TOŠK Tešanj":["Luke Stadium, Tešanj",7000],"NK Travnik":["Pirota Stadium",4000],
+ "NK Zvijezda Gradačac":["Banja Ilidža Stadium",5000],"FK Leotar Trebinje":["Police Stadium",8550],
+ "FK Drina Zvornik":["Zvornik City Stadium",3000],"FK Kozara Gradiška":["Gradiška City Stadium",5000],
+ "FK Laktaši":["Laktaši Stadium",2200],"FK Zvijezda 09":["Novi Gradski Stadium Ugljevik",8118]
+};
 const competitionSources={
  "Premijer Liga BiH":"https://www.nfsbih.ba/takmicenja/nogomet-muskarci/wwin-liga-bih/raspored-kola-wwin-lige-bih/",
  "Prva liga FBiH":"https://www.nsfbih.ba/vijesti/13879/izvrsen-zrijeb-takmicarskih-brojeva-wwin-prve-lige-fbih",

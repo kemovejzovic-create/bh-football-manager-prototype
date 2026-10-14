@@ -74,6 +74,7 @@ function normalizeSavedState(raw){
  if(!Number.isFinite(Number(merged.matchday))||Number(merged.matchday)<0)merged.matchday=0;
  merged.matchday=Math.floor(Number(merged.matchday));
  for(const key of ["rep","balance","points","played","wins","draws","losses","lossStreak","transferTick","summerTick"])if(!Number.isFinite(Number(merged[key])))merged[key]=DEFAULT_STATE[key];
+ merged.rep=Math.max(0,Math.min(100,Number(merged.rep)));
  if(typeof merged.managerFired!=="boolean")merged.managerFired=false;
  if(typeof merged.club!=="string"||!merged.club)merged.club=DEFAULT_STATE.club;
  if(typeof merged.league!=="string"||!leagues[merged.league])merged.league=Object.keys(leagues).find(l=>leagues[l].includes(merged.club))||DEFAULT_STATE.league;
@@ -285,20 +286,23 @@ function allJobTargets(){
   const hash=[...club].reduce((sum,ch)=>(sum*31+ch.charCodeAt(0))>>>0,7);
   byClub.set(club,minimum+(hash%9));
  }));
+ for(const club of ["FK Sarajevo","FK Borac Banja Luka","HŠK Zrinjski Mostar"])byClub.set(club,85);
  return [...byClub].map(([club,rep])=>[club,rep]);
 }
 function canApplyToJob(job){return state.rep>=job[1]||(state.managerFired&&job[1]<=Math.max(25,state.rep+10))}
 function shuffle(a){return [...a].sort(()=>Math.random()-.5)}
 function refreshJobBoard(force=false){
  const eligible=allJobTargets().filter(j=>j[0]!==state.club&&Object.keys(leagues).some(name=>playableClubsForLeague(name).includes(j[0])));
- const boardIsValid=Array.isArray(state.jobBoard)&&state.jobBoard.length>0&&state.jobBoard.every(j=>eligible.some(e=>e[0]===j[0]));
+ const boardIsValid=Array.isArray(state.jobBoard)&&state.jobBoard.length===10&&state.jobBoard.every(j=>eligible.some(e=>e[0]===j[0]));
  if(force||!boardIsValid||!Array.isArray(state.jobBoard)||state.jobBoardMD!==state.matchday){
-  const shuffled=shuffle(eligible);
-  const accessible=shuffled.filter(canApplyToJob).slice(0,3);
-  const locked=shuffled.filter(j=>j[1]>state.rep).slice(0,3);
-  let board=[...accessible,...locked];
-  if(board.length<6) board=[...board,...shuffled.filter(j=>!board.some(x=>x[0]===j[0])).slice(0,6-board.length)];
-  state.jobBoard=board.slice(0,6);state.jobBoardMD=state.matchday;
+  const tiers=[
+   job=>job[1]>=20&&job[1]<30,
+   job=>job[1]>=30&&job[1]<40,
+   job=>job[1]>=40&&job[1]<50,
+   job=>job[1]>=50
+  ];
+  const board=tiers.flatMap((matches,index)=>shuffle(eligible.filter(matches)).slice(0,[2,2,2,4][index]));
+  state.jobBoard=board;state.jobBoardMD=state.matchday;
  }
 }
 function transferStatus(){
@@ -396,7 +400,7 @@ function maybeGenerateJobOffer(oldRep,newRep){
 }
 function recordManagerResult(myGoals,oppGoals){
  const oldRep=state.rep;
- if(myGoals>oppGoals){state.wins++;state.lossStreak=0;state.rep+=2;state.balance+=15000}
+ if(myGoals>oppGoals){state.wins++;state.lossStreak=0;state.rep=Math.min(100,state.rep+2);state.balance+=15000}
  else if(myGoals<oppGoals){state.losses++;state.lossStreak=(Number(state.lossStreak)||0)+1;state.rep=Math.max(0,state.rep-1);state.balance-=5000}
  else{state.draws++;state.lossStreak=0;state.balance+=5000}
  maybeGenerateJobOffer(oldRep,state.rep);
@@ -618,6 +622,27 @@ function normalizeXI(){
  valid.forEach(id=>{if(out.length<Math.min(11,valid.length)&&!seen.has(id)){seen.add(id);out.push(id)}});
  state.xi=out;
 }
+function autoPickXI(){
+ const formation=formations[state.formation]||formations[DEFAULT_STATE.formation];
+ const available=state.players.slice().sort((a,b)=>b.ovr-a.ovr||String(a.name).localeCompare(String(b.name)));
+ const picked=Array(formation.length).fill(null);
+ const groupFor=position=>{
+  if(position==="GK")return "GK";
+  if(["LB","RB","CB"].includes(position))return "DEF";
+  if(["DM","CM","RM","LM","AM"].includes(position))return "MID";
+  if(["RW","LW","ST","CF"].includes(position))return "ATT";
+  return "";
+ };
+ for(const group of ["GK","DEF","MID","ATT"]){
+  const slots=formation.map((slot,index)=>({slot,index})).filter(({slot})=>groupFor(slot[0])===group);
+  const players=available.filter(player=>groupFor(player.pos)===group);
+  slots.forEach(({index},i)=>{if(players[i])picked[index]=players[i].id;});
+ }
+ const used=new Set(picked.filter(Boolean));
+ const remaining=available.filter(player=>!used.has(player.id));
+ formation.forEach((_,index)=>{if(!picked[index]&&remaining.length)picked[index]=remaining.shift().id;});
+ state.xi=picked.filter(Boolean);normalizeXI();save();render();
+}
 
 function initClub(){ensureClubSquads();loadClubSquad(state.club);initSeason(false);save()}
 function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","All Leagues","Results","Cup","Jobs","Transfers","Match Report","Season Report","History"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
@@ -649,10 +674,33 @@ function render(){
  if(state.celebration)celebrationOverlay();
  scheduleLiveMatchEvent();
 }
+function stadiumForClub(club){
+ const entry=STADIUM_DATA[club];
+ const league=Object.keys(leagues).find(name=>leagues[name].includes(club))||"";
+ const estimatedCapacity=league==="Premijer Liga BiH"?5000:league.startsWith("Prva liga")?3000:1800;
+ return {name:entry?.[0]||"Gradski stadion (estimated)",capacity:entry?.[1]||estimatedCapacity,estimated:!entry,league};
+}
+function clubReputation(club){return allJobTargets().find(job=>job[0]===club)?.[1]||50}
+function attendanceForFixture(homeClub,awayClub){
+ const stadium=stadiumForClub(homeClub);
+ const recent=state.results.slice(-5).flat().filter(result=>result.home===homeClub||result.away===homeClub);
+ const points=recent.reduce((sum,result)=>{
+  const homeSide=result.home===homeClub,forGoals=homeSide?result.hg:result.ag,against=homeSide?result.ag:result.hg;
+  return sum+(forGoals>against?3:forGoals===against?1:0);
+ },0);
+ const form=recent.length?points/(recent.length*3):.5;
+ const occupancy=Math.max(.08,Math.min(.95,.10+clubReputation(homeClub)*.0018+clubReputation(awayClub)*.0026+(form-.5)*.22));
+ const attendance=Math.min(stadium.capacity,Math.round(stadium.capacity*occupancy));
+ const ticketPrice=stadium.league==="Premijer Liga BiH"?6:stadium.league.startsWith("Prva liga")?4:2;
+ return {...stadium,attendance,ticketPrice,revenue:attendance*ticketPrice};
+}
 function home(){
+ initCup();
  const pos=standings().findIndex(x=>x.club===state.club)+1,total=seasonMatchdays();
- document.getElementById("app").innerHTML=`${state.jobNotice?`<div class="notice" style="margin-bottom:12px">${state.jobNotice}</div>`:""}<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}/${total}</div><h2>${state.club}</h2><div class="grid"><div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div><div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">League</div><div class="stat">#${pos||"-"} • ${state.points} pts</div></div><div><div class="label">Squad OVR</div><div class="stat">${squadRating()}</div></div></div></div>
- <div class="card"><h3>Next fixture</h3><p>${nextOpponent()}</p>${state.managerFired?'<div class="notice">You have been dismissed. Open Jobs to continue your career.</div>':state.matchday<total?'<button class="primary" onclick="playMatch()">Play matchday</button>':'<div class="notice">League season complete.</div>'}</div>
+ const stadium=stadiumForClub(state.club);
+ const cupDue=isCupTieDue();
+ document.getElementById("app").innerHTML=`${state.jobNotice?`<div class="notice" style="margin-bottom:12px">${state.jobNotice}</div>`:""}<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}/${total}</div><h2>${state.club}</h2><div class="grid"><div><div class="label">Manager rep</div><div class="stat">${state.rep}</div></div><div><div class="label">Balance</div><div class="stat">€${Math.round(state.balance).toLocaleString()}</div></div><div><div class="label">Record</div><div class="stat">${state.wins}-${state.draws}-${state.losses}</div></div><div><div class="label">League</div><div class="stat">#${pos||"-"} • ${state.points} pts</div></div><div><div class="label">Squad OVR</div><div class="stat">${squadRating()}</div></div></div><div class="sub" style="margin-top:10px">Home stadium: ${stadium.name} • Capacity ${stadium.capacity.toLocaleString()}${stadium.estimated?" • estimated":""}</div></div>
+ <div class="card"><h3>Next fixture</h3><p>${cupDue?`Cup • ${state.cup.roundName}`:nextOpponent()}</p>${state.managerFired?'<div class="notice">You have been dismissed. Open Jobs to continue your career.</div>':cupDue?'<button class="primary" onclick="state.tab=\'Cup\';save();render()">Open scheduled cup tie</button>':state.matchday<total?'<button class="primary" onclick="playMatch()">Play matchday</button>':'<div class="notice">League season complete.</div>'}</div>
  <div class="card"><h3>Promotion & relegation</h3><p class="sub">The top tier exchanges two clubs with the champions of the FBiH and RS first divisions. Lower-tier promotion routes are still being added.</p>${(state.promotionHistory||[]).slice(-1).map(x=>`<div class="notice">${x.season}/${String(x.season+1).slice(-2)}: ${x.changes.map(c=>`${c.club}: ${c.from} → ${c.to}`).join(" • ")}</div>`).join("")}</div><div class="card"><h3>Transfer market</h3><div class="sub">${transferStatus().label}</div></div><div class="card"><h3>Latest matchday</h3>${latestRoundHTML()}</div>
  <div class="card"><h3>Real 2026/27 data</h3><p class="sub">Club/player names are sourced from current 2026/27 federation and squad listings. OVR is a game attribute, not an official player rating. Prva liga FBiH starting XIs are based on published 2026/27 match lineups.</p></div><div class="card"><h3>Season engine</h3><p class="sub">Every populated league advances one round per world matchday, with separate saved fixtures, tables and results. Premijer Liga BiH uses 36 matchdays (four meetings per opponent); other populated leagues retain their two-meeting format.</p></div>`
 }
@@ -665,7 +713,7 @@ function simulateFixture(f,referee=assignReferee()){
 }
 function applyResult(r){const h=state.table[r.home],a=state.table[r.away];h.p++;a.p++;h.gf+=r.hg;h.ga+=r.ag;a.gf+=r.ag;a.ga+=r.hg;if(r.hg>r.ag){h.w++;h.pts+=3;a.l++}else if(r.hg<r.ag){a.w++;a.pts+=3;h.l++}else{h.d++;a.d++;h.pts++;a.pts++}}
 function standings(){return Object.values(state.table).sort((a,b)=>b.pts-a.pts||(b.gf-b.ga)-(a.gf-a.ga)||b.gf-a.gf||b.w-a.w||a.club.localeCompare(b.club))}
-function latestRoundHTML(){if(!state.results.length)return'<div class="sub">No matches played yet.</div>';return state.results[state.results.length-1].map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join("")}
+function latestRoundHTML(){if(!state.results.length)return'<div class="sub">No matches played yet.</div>';return state.results[state.results.length-1].map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>${r.attendance?'<div class="sub">'+r.stadium+' • '+Number(r.attendance).toLocaleString()+' / '+Number(r.stadiumCapacity).toLocaleString()+' attended'+(r.home===state.club?' • Ticket sales +€'+Number(r.ticketRevenue||0).toLocaleString():'')+'</div>':''}`).join("")}
 function statKey(club,p,competition="league"){return `${competition}::${club}::${p.id}`}
 function blankPlayerStat(club,p,competition="league"){return{competition,club,id:p.id,name:p.name,pos:p.pos,age:p.age,ovr:p.ovr,apps:0,starts:0,goals:0,assists:0,cleanSheets:0,minutes:0,yellows:0,reds:0}}
 function initPlayerStats(){
@@ -915,6 +963,7 @@ function liveEventIcon(type){return type==="goal"?"⚽":type==="yellow"?"🟨":t
 function playMatch(){
  if(state.managerFired){state.tab="Jobs";state.jobNotice=`You were dismissed by ${state.club}. Apply for another club to continue your career.`;save();render();return;}
  if(state.pendingMatch){state.tab="Match Report";render();return;}
+ if(isCupTieDue()){state.tab="Cup";save();render();return;}
  ensureSeasonReady();
  const total=seasonMatchdays();if(state.matchday>=total)return;
  normalizeXI();
@@ -990,7 +1039,12 @@ function completePendingMatch(){
  updatePlayerStatsFromReport(report);
  const roundResults=pending.results;
  roundResults.forEach((x,i)=>{if(i!==pending.roundIndex)updatePlayerStatsForResult(x);applyResult(x)});
- state.results.push(roundResults);state.lastMatch=report;state.pendingMatch=null;state.matchday++;
+ state.results.push(roundResults);
+ const gate=attendanceForFixture(fixture.home,fixture.away);
+ report.stadium=gate.name;report.stadiumCapacity=gate.capacity;report.attendance=gate.attendance;
+ report.ticketRevenue=fixture.home===state.club?gate.revenue:0;
+ if(report.ticketRevenue)state.balance+=report.ticketRevenue;
+ state.lastMatch=report;state.pendingMatch=null;state.matchday++;
  advanceOtherLeaguesOneRound(state.league);
  if(transferStatus().type==="mid")runAITransferTick("mid");
  saveActiveCompetition();
@@ -1030,6 +1084,7 @@ function matchReportPage(){
  <div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}</div>
  <h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2>
  <p style="text-align:center" class="sub">${myScore>oppScore?"🏆 Victory":myScore<oppScore?"Defeat":"Draw"} • ${state.mentality}</p><div class="notice">Referee: <b>${refereeSummary(m)}</b><div class="sub">The game profile affected goal rates and disciplinary decisions. It is simulated and does not describe the named official's real style.</div></div></div>
+ ${Number.isFinite(m.attendance)?`<div class="card"><h3>Matchday gate</h3><div class="row"><span>${m.stadium||stadiumForClub(m.home).name}</span><b>${Number(m.attendance).toLocaleString()} / ${Number(m.stadiumCapacity||stadiumForClub(m.home).capacity).toLocaleString()}</b></div>${isHome?`<div class="row"><span>Ticket sales</span><b>+€${Number(m.ticketRevenue||0).toLocaleString()}</b></div>`:'<div class="sub">Ticket income goes to the home club.</div>'}</div>`:""}
  <div class="card"><h3>Match timeline</h3>${events}</div>
  <div class="card"><h3>Match statistics</h3>
  <div class="row"><span>Possession</span><b>${homePoss}% — ${awayPoss}%</b></div>
@@ -1051,7 +1106,7 @@ function squad(){
  const bench=state.players.filter(p=>!state.xi.includes(p.id));
  const sourceLabel=p=>p.rosterSource==="match-sheet"?"Match sheet":p.rosterSource==="public-roster"?"Public roster":p.rosterSource==="generated"?"Generated depth":"Seeded roster";
  const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs • ${sourceLabel(p)}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11?"disabled":""}>Sell</button>`:""}</div>`).join("")}</div>`;
- document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div><div class="pitch">${mapped.map(m=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
+ document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div><div class="pitch">${mapped.map(m=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><button class="primary" onclick="autoPickXI()">Auto-pick</button><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.pos} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
 function changeFormation(f){state.formation=f;normalizeXI();save();render()}
 function replaceXI(i,id){
  normalizeXI(); id=String(id);
@@ -1077,18 +1132,28 @@ function allLeaguesPage(){
  document.getElementById("app").innerHTML=`<div class="card"><h2>All Leagues</h2><p class="sub">Every populated competition in your save. Tables update together after each completed matchday.</p></div>${sections}`;
 }
 function cupClubs(){return shuffle(["FK Sarajevo","FK Željezničar","FK Borac Banja Luka","HŠK Zrinjski Mostar","FK Velež Mostar","NK Široki Brijeg","FK Sloga Doboj","FK Radnik Bijeljina","NK Čelik Zenica","BSK Banja Luka","NK Bratstvo Gračanica","FK Igman Konjic","HNK Čapljina","FK Rudar Kakanj","NK Vitez","HNK Tomislav","FK Budućnost Banovići","NK TOŠK Tešanj","NK Zvijezda Gradačac","FK Radnik Hadžići","NK GOŠK Gabela","FK Sloboda Tuzla","NK Travnik","NK Jedinstvo Bihać","NK Stupčanica Olovo","HŠK Posušje","FK Mladost Doboj Kakanj","FK Goražde","NK Vis Simm-Bau","NK Gradina Srebrenik","FK Tuzla City","FK Rudar Prijedor"])}
-function initCup(){if(state.cup&&state.cup.season===state.season)return;let clubs=cupClubs();state.cup={season:state.season,round:1,roundName:"Round of 32",pending:clubs.map((c,i)=>({home:c,away:clubs[i^1]})).filter((x,i,a)=>i%2===0),results:[],winner:null,played:false,rewardMoney:0};}
+function initCup(){if(state.cup&&state.cup.season===state.season)return;let clubs=cupClubs();state.cup={season:state.season,round:1,roundName:"Round of 32",pending:clubs.map((c,i)=>({home:c,away:clubs[i^1]})).filter((x,i,a)=>i%2===0),results:[],winner:null,played:false,rewardMoney:0};save();}
 function cupCurrentFixture(){initCup();return state.cup.pending.find(f=>f.home===state.club||f.away===state.club)||null}
 function cupRoundName(r){return ["","Round of 32","Round of 16","Quarter-final","Semi-final","Final"][r]||"Cup"}
+function isCupTieDue(){
+ if(state.seasonReport)return false;
+ initCup();
+ const round=Number(state.cup.round)||0;
+ return round>=1&&round<=5&&state.matchday>=round*4&&!!cupCurrentFixture();
+}
 function simulateCupGame(f){const referee=assignReferee(),xg=expectedGoalsForFixture(f.home,f.away,referee);let hg=Math.min(poissonish(xg.home),6),ag=Math.min(poissonish(xg.away),6);if(hg===ag){if(Math.random()<teamRating(f.home)/(teamRating(f.home)+teamRating(f.away)))hg++;else ag++;}return{...f,hg,ag,referee:referee.name,refereeProfile:referee.id};}
-function playCup(){if(state.managerFired){state.tab="Jobs";state.jobNotice=`You were dismissed by ${state.club}. Apply for another club to continue your career.`;save();render();return;}initCup();const f=cupCurrentFixture();if(!f){alert("Your club has no cup match in this round.");return;}let games=state.cup.pending.map(x=>simulateCupGame(x));games.forEach(r=>updatePlayerStatsForResult(r,"cup"));state.cup.results.push(games);let winners=games.map(r=>r.hg>r.ag?r.home:r.away);let userResult=games.find(r=>r.home===state.club||r.away===state.club);if(userResult){const my=userResult.home===state.club?userResult.hg:userResult.ag,opp=userResult.home===state.club?userResult.ag:userResult.hg;state.rep=Math.max(0,state.rep+(my>opp?2:my===opp?0:-1)); if(my>opp){const prize=cupRewardForRound(state.cup.round); state.balance+=prize; state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}}if(winners.length===1){state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5; if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;addAchievement("cup-win","Kup BiH Winners",`${state.club} won Kup BiH.`,"🏆",{season:state.season,club:state.club});showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Your club receives the winner's bonus!`,"🏆","Cup");}}else{let next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);}save();render();}
-function cup(){initCup();const f=cupCurrentFixture();const last=state.cup.results.length?state.cup.results[state.cup.results.length-1]:[];document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><div class="sub">${state.cup.winner?"Champion: "+state.cup.winner:state.cup.roundName+" • Knockout competition"}</div><div class="sub">Cup earnings: €${(state.cup.rewardMoney||0).toLocaleString()}</div>${f?`<div class="notice"><b>${f.home} vs ${f.away}</b><br>Your cup match is ready.</div><button class="primary" onclick="playCup()">Play cup match</button>`:`<div class="notice">Your club has been eliminated or is awaiting the next draw.</div>`}</div>${last.length?`<div class="card"><h3>Latest cup round</h3>${last.map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line);font-weight:${r.home===state.club||r.away===state.club?'800':'400'}"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join("")}</div>`:""}` }
+function playCup(){if(state.managerFired){state.tab="Jobs";state.jobNotice=`You were dismissed by ${state.club}. Apply for another club to continue your career.`;save();render();return;}initCup();if(!isCupTieDue()){state.jobNotice="Cup ties are scheduled after every four league matchdays.";render();return;}const f=cupCurrentFixture();if(!f){alert("Your club has no cup match in this round.");return;}let games=state.cup.pending.map(x=>simulateCupGame(x));games.forEach(r=>updatePlayerStatsForResult(r,"cup"));state.cup.results.push(games);let winners=games.map(r=>r.hg>r.ag?r.home:r.away);let userResult=games.find(r=>r.home===state.club||r.away===state.club);if(userResult){const cupGate=attendanceForFixture(userResult.home,userResult.away);userResult.stadium=cupGate.name;userResult.stadiumCapacity=cupGate.capacity;userResult.attendance=cupGate.attendance;if(userResult.home===state.club){userResult.ticketRevenue=cupGate.revenue;state.balance+=cupGate.revenue;}const my=userResult.home===state.club?userResult.hg:userResult.ag,opp=userResult.home===state.club?userResult.ag:userResult.hg;state.rep=Math.max(0,Math.min(100,state.rep+(my>opp?2:my===opp?0:-1))); if(my>opp){const prize=cupRewardForRound(state.cup.round); state.balance+=prize; state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}}if(winners.length===1){state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5; if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;addAchievement("cup-win","Kup BiH Winners",`${state.club} won Kup BiH.`,"🏆",{season:state.season,club:state.club});showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Your club receives the winner's bonus!`,"🏆","Cup");}}else{let next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);}save();render();}
+function cup(){
+ initCup();const f=cupCurrentFixture(),due=isCupTieDue(),last=state.cup.results.length?state.cup.results[state.cup.results.length-1]:[];
+ const scheduleMessage=f?(due?"This cup tie is scheduled now.":`Scheduled after league matchday ${state.cup.round*4}.`):"Your club has been eliminated or is not in this cup draw.";
+ document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><div class="sub">${state.cup.winner?"Champion: "+state.cup.winner:state.cup.roundName+" • Knockout competition"}</div><div class="sub">Cup earnings: €${(state.cup.rewardMoney||0).toLocaleString()}</div>${f?`<div class="notice"><b>${f.home} vs ${f.away}</b><br>${scheduleMessage}</div>${due?'<button class="primary" onclick="playCup()">Play cup tie</button>':''}`:`<div class="notice">${scheduleMessage}</div>`}</div>${last.length?`<div class="card"><h3>Latest cup round</h3>${last.map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line);font-weight:${r.home===state.club||r.away===state.club?'800':'400'}"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>${r.attendance?`<div class="sub">${r.stadium} • ${Number(r.attendance).toLocaleString()} / ${Number(r.stadiumCapacity).toLocaleString()} attended${r.home===state.club?` • Ticket sales +€${Number(r.ticketRevenue||0).toLocaleString()}`:""}</div>`:""}`).join("")}</div>`:""}`;
+}
 function jobs(){
  refreshJobBoard(false);
  const offers=Array.isArray(state.jobOffers)?state.jobOffers:[];
  const activeOffers=offers.filter(o=>o.expiresMD>=state.matchday&&o.club!==state.club);
  state.jobOffers=activeOffers;
- document.getElementById("app").innerHTML=`<div class="card"><h2>Jobs</h2><p class="sub">Your reputation: ${state.rep}. Six clubs are shown each matchday; three are normally available and three require higher reputation.</p>
+ document.getElementById("app").innerHTML=`<div class="card"><h2>Jobs</h2><p class="sub">Your reputation: ${state.rep}/100. Ten clubs are shown each matchday: two from each reputation band below 50, plus four clubs requiring 50 or more.</p>
  ${state.jobNotice?`<div class="notice" style="margin:8px 0">${state.jobNotice}</div>`:""}
  ${state.seasonReport?`<div class="notice">Your league season is complete. Continue to the next season before accepting another job.</div>`:""}
  ${activeOffers.length?`<div class="notice"><b>Job offers</b>${activeOffers.map((o,i)=>`<div class="club"><div style="flex:1"><b>${o.club}</b><div class="sub">${o.reason} • Offer expires after matchday ${o.expiresMD}</div></div><button class="primary" onclick="acceptOffer(${i})" ${state.seasonReport?'disabled':''}>Accept offer</button></div>`).join("")}</div>`:""}
