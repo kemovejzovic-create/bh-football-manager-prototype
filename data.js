@@ -108,11 +108,12 @@ const REAL_PRVA_SQUADS={
 // https://www.sportdc.net/vest/muskarci/178962-rudar-bolji-od-hercegovca/f
 "FK Hercegovac Bileća":[["ATT","Filip Vujović"],["ATT","Aleksandar Albijanić"],["ATT","Marko Ilić"],["ATT","Luka Inić"],["ATT","Dragan Ristić"],["ATT","Andrej Albijanić"],["ATT","Goran Milidragović"],["ATT","Lazar Mrkaić"],["ATT","Stefan Pravica"],["ATT","Dimitrije Samardžić"],["ATT","Uroš Puhalo"],["MID","Rajko Komnenić"],["MID","Vuk Vučić"],["MID","Dragan Skočo"],["MID","Dušan Lero"],["MID","Tripo Jokanović"],["MID","Lazar Puhalo"],["MID","Aleksej Vuković"],["MID","Miloš Starović"],["MID","Srđan Andrić"],["MID","Marko Vujović"],["MID","Vuk Milenić"],["MID","Sergej Malešević"],["MID","Ognjen Milidragović"],["DEF","Nikola Đorđić"],["DEF","Aleksa Bjeletić"],["DEF","Marko Milošević"],["DEF","Marko Pandžić"],["DEF","Miloš Samardžić"],["DEF","Jovan Vujović"],["DEF","Stefan Milojević"],["DEF","Đorđe Salatić"],["DEF","Gavrilo Popadić"],["DEF","Neđeljko Anđušić"],["DEF","Đorđe Samardžić"],["GK","Aleksa Denda"],["GK","Damjan Aleksić"],["GK","Boris Dutina"]]
 };
-// Current-season names transcribed from official NS FBiH match sheets. These
-// are matchday player lists, not claims of complete registrations; generated
-// depth fills out each squad. Positions for these sheets are broad game-role
-// estimates, since the federation reports do not list player positions.
+// Current-season lower-division names from public squad pages or match sheets.
+// Match sheets are partial matchday lists; generated depth fills out each squad.
+// Sources and source type are attached per club below. Estimated game attributes
+// and broad positions are not official player ratings or registered positions.
 const SOURCED_LOWER_SQUADS={
+ "FK Bratstvo Kozinci":["Djorde Nisic","Lazar Nisic","Danijel Cvetković","Stefan Golić","Jovica Materić","Duško Trkulja","Riste Bjelić","Nikola Freund","Nebojsa Stjepanovic","Ljubinko Latinović","Stefan Ćulibrk","Aleksandar Matić","Nemanja Ostojić","Milan Kos","Mladen Perić","Miroslav Zorić","Boris Ostojić","Pero Miladinovic","Srđan Ostojić","Aleksandar Dulić","Dean Popović","Miloš Radaković","Branislav Subotić","Dragan Drinić","Ognjen Dragičević","Aleksandar Popović","Ammar Jusufović","Saša Behara","Nemanja Petrović","Stefan Šervel"],
  "FK Gornji Rahić":["Vehid Mrkaljević","Senad Bošnjaković","Mehmed Bijelić","Fatmir Hercegovac","Eman Bekrić","Stefan Božić","Aldin Lišić","Almedin Ibrahimbašić","Hazim Hamidović","Abdulah Salkić","Amar Čaušević","Sead Bećirović","Arnel Ljuca","Arif Zečić","Ermin Kadrić","Arman Ibrišimović","Emrah Omić","Amel Softić","Radovan Vujić"],
  "NK Orahovica 74":["Enis Softić","Avdo Huskanović","Semir Dedić","Nermin Gazibegović","Haris Muratović","Muhamed Mujić","Emir Hasinović","Adin Mekić","Aziz Bešić","Dženid Gegić","Emir Mešanović","Elmir Kasumi","Arnel Osmanović","Enis Ahmetović","Elmin Mujić","Benjamin Osmanović","Ernad Bešić","Rasim Mešić","Hasan Fišić","Vedad Mešić"],
  "NK Nemila":["Tarik Plančić","Samed Žuna","Amer Durmić","Nermin Pašalić","Enis Ismić","Anel Dedić","Amar Mašić","Fahir Omerdić","Salih Varupa","Amir Hodžić","Ismar Helvida","Imran Kozlić","Samed Kozlić","Samir Skomorac","Hanan Baručija","Besim Kolić","Anis Buljubašić","Hamza Grahić","Zijad Mujić","Vildan Kasap"],
@@ -123,9 +124,9 @@ const SOURCED_LOWER_SQUADS={
  "HNK Grude":["Ronald Bilić","Kristijan Pejić","Filip Markota","Stipe Alpeza","David Alpeza","Stjepan Mikulić","Ivan Pandžić","Luka Vlašić","Ivan Tolić","Stanko Marić","Ivan Katura","Ljubo Spajić","Luka Zucić","Toni Tomas","Stjepan Pejić","Petar Kondža","Mihael Palac","Ante Zucić"],
  "FK Rudar 1925 Ugljevik":["Milan Trišić","Miloš Lazić","Darko Simić","Mladen Ristić","Žarko Perković","Branislav Cvijić","Ljubomir Vidaković","Goran Milovanović","Radivoje Bumbić","Igor Jelić","Željko Arsenović","Strahinja Petričević","Srđan Grujičić","David Ristić","Nemanja Cvijić"],
  "FK Proleter Teslić":["Asim Bošnjak","Bogdan Perušinović","Saša Kuzmanović","Nemanja Đukarić","Stefan Đurić","David Simić","Želimir Nikolić","Aleksandar Sekulić","Vukota Simić","Tarik Osmić","Srđan Stanković","Srđan Radešić","Nemanja Pavlović"],
- "FK Modriča Alfa":["Savo Sekulić","Stefan Pljevaljčić","Dragan Jolović","Milan Gerić","Nikola Mićić","Miodrag Radulović","Nebojša Prljeta","Dejan Limić","Valentin Pejić","Luka Dimitrijević","Marko Đelmaš","Nemanja Kojić","Bojan Mitrović","Bojan Lukić","Marko Vuković"]
 };
 const SOURCED_LOWER_SQUAD_SOURCES={
+ "FK Bratstvo Kozinci":"https://www.sofascore.com/football/team/fk-bratstvo-kozinci/478032",
  "FK Gornji Rahić":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-sjever/54212513",
  "NK Orahovica 74":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-sjever/54212513",
  "NK Nemila":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-centar/54227140",
@@ -136,8 +137,8 @@ const SOURCED_LOWER_SQUAD_SOURCES={
  "HNK Grude":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-jug/54209938",
  "FK Rudar 1925 Ugljevik":"https://mobile.sportdc.net/vest/muskarci/178962-rudar-bolji-od-hercegovca/f",
  "FK Proleter Teslić":"https://mobile.sportdc.net/vest/muskarci/178958-proleter-nema-namjeru-da-stane/f",
- "FK Modriča Alfa":"https://mobile.sportdc.net/vest/muskarci/178958-proleter-nema-namjeru-da-stane/f"
 };
+const SOURCED_LOWER_SQUAD_TYPES={"FK Bratstvo Kozinci":"public-roster"};
 const REAL_SQUAD_SOURCES={
  "FK Hercegovac Bileća":"https://www.sofascore.com/football/team/fk-hercegovac-bileca/488722"
 };

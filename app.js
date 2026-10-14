@@ -6,6 +6,13 @@ function applyRosterAudit(club,players){
  for(const item of audit.additions||[]){const [pos,name,age,ovr]=item;const key=normPlayerName(name);if(!byName.has(key)){const player={id:`${club}::${key}`,pos,name,age,ovr};players.push(player);byName.set(key,player);}}
  return players;
 }
+function generatedSquadName(club,index,hash,used=new Set()){
+ const first=["Adnan","Ajdin","Alen","Amar","Anel","Armin","Benjamin","Dario","Edin","Eldin","Emir","Enes","Faruk","Haris","Ibrahim","Ivan","Jasmin","Josip","Kerim","Luka","Mahir","Marko","Matej","Mirza","Nermin","Nikola","Ognjen","Petar","Rijad","Samir","Tarik","Vedad","Vedran","Zlatan"];
+ const last=["Alić","Babić","Begić","Božić","Čaušević","Delić","Hadžić","Halilović","Hasanović","Hodžić","Ibrahimović","Jovanović","Kadić","Kovačević","Križanac","Lazić","Marković","Mehić","Milić","Mujkić","Nikolić","Osmanović","Pavlović","Petrović","Popović","Ramić","Smajić","Stanić","Tadić","Tomić","Vasiljević","Vuković","Zec","Živković","Barišić","Ćosić","Đurić","Filipović","Grgić","Knežević","Lukić","Matić","Musić","Ristić","Šarić","Šehić","Šimić","Štulić","Turić","Vučić"];
+ const total=first.length*last.length,base=(hash+index*7919)%total;
+ for(let n=0;n<total;n++){const slot=(base+n)%total,name=`${first[Math.floor(slot/last.length)]} ${last[slot%last.length]}`;if(!used.has(name))return name;}
+ return `Generated player ${index+1}`;
+}
 function playersFor(club){
  let players=[];
  if(seedPlayers[club]) players=seedPlayers[club].map((x,i)=>({id:i,pos:x[0],name:x[1],age:x[2],ovr:x[3],rosterSource:"seeded"}));
@@ -17,9 +24,10 @@ function playersFor(club){
    const sourced=SOURCED_LOWER_SQUADS[club]||[];
    const rosterSize=Math.max(18,sourced.length);
    const hash=[...club].reduce((sum,ch)=>(sum*31+ch.charCodeAt(0))>>>0,7);
+   const usedNames=new Set(sourced);
    // Source-backed matchday names lead the squad; generated depth fills gaps.
    // Clubs without any source names still receive a distinct, stable roster.
-   players=Array.from({length:rosterSize},(_,i)=>({id:i,pos:roles[i%roles.length],name:sourced[i]||`${club} Player ${String(i+1).padStart(2,"0")}`,age:19+((hash+i*7)%17),ovr:48+((hash+i*11)%13),rosterSource:sourced[i]?"match-sheet":"generated",sourceUrl:sourced[i]?SOURCED_LOWER_SQUAD_SOURCES[club]||null:null}));
+   players=Array.from({length:rosterSize},(_,i)=>{const name=sourced[i]||generatedSquadName(club,i,hash,usedNames);usedNames.add(name);return {id:i,pos:roles[i%roles.length],name,age:19+((hash+i*7)%17),ovr:48+((hash+i*11)%13),rosterSource:sourced[i]?(SOURCED_LOWER_SQUAD_TYPES[club]||"match-sheet"):"generated",sourceUrl:sourced[i]?SOURCED_LOWER_SQUAD_SOURCES[club]||null:null};});
   }
  }
  return applyRosterAudit(club,players);
@@ -112,9 +120,13 @@ applyLeagueMembership();
 
 function clonePlayer(p){return {...p};}
 function seedSquadForClub(club){return playersFor(club).map((p,i)=>({...p,id:`${club}::${i}`}));}
+function matchesOtherClubSquad(club,squad){
+ return Object.entries(state.clubSquads||{}).some(([other,source])=>other!==club&&Array.isArray(source)&&source.length===squad.length&&squad.every((p,i)=>p.name===source[i]?.name));
+}
 function ensureClubSquads(){
  if(!state.clubSquads||typeof state.clubSquads!=="object")state.clubSquads={};
  const all=[...new Set(Object.values(leagues).flat())].filter(c=>c&&!String(c).startsWith("TBD")&&!String(c).includes("regional"));
+ let repairedCurrentSquad=false;
  all.forEach(c=>{
   const squad=state.clubSquads[c];
   if(!Array.isArray(squad)||!squad.length){state.clubSquads[c]=seedSquadForClub(c);return;}
@@ -124,10 +136,14 @@ function ensureClubSquads(){
   const foreign=originIds.filter(origin=>origin!==c);
   if(foreign.length===squad.length&&new Set(foreign).size===1&&state.clubSquads[foreign[0]]?.length){
    const sourceIds=new Set(state.clubSquads[foreign[0]].map(p=>String(p.id)));
-   if(squad.every(p=>sourceIds.has(String(p.id))))state.clubSquads[c]=seedSquadForClub(c);
+   if(squad.every(p=>sourceIds.has(String(p.id)))){state.clubSquads[c]=seedSquadForClub(c);if(c===state.club)repairedCurrentSquad=true;}
   }
-  if(squad.every(p=>String(p.name||"").startsWith(`${c} Player `)))state.clubSquads[c]=seedSquadForClub(c);
+  if(matchesOtherClubSquad(c,squad)){state.clubSquads[c]=seedSquadForClub(c);if(c===state.club)repairedCurrentSquad=true;}
+  if(squad.every(p=>String(p.name||"").startsWith(`${c} Player `))){state.clubSquads[c]=seedSquadForClub(c);if(c===state.club)repairedCurrentSquad=true;}
  });
+ if(repairedCurrentSquad)state.players=(state.clubSquads[state.club]||[]).map(clonePlayer);
+ if(Array.isArray(state.players)&&state.players.length&&matchesOtherClubSquad(state.club,state.players))state.players=(state.clubSquads[state.club]||[]).map(clonePlayer);
+ if(Array.isArray(state.players)&&state.players.length&&state.players.every(p=>String(p.name||"").startsWith(`${state.club} Player `)))state.players=(state.clubSquads[state.club]||[]).map(clonePlayer);
  if(Array.isArray(state.players)&&state.players.length){
    const existing=state.clubSquads[state.club];
    if(!existing||!existing.length)state.clubSquads[state.club]=state.players.map((p,i)=>({...p,id:p.id??`${state.club}::${i}`}));
@@ -155,8 +171,8 @@ function upgradeRealSquadsV012(){
   const origins=new Set(transferred.map(p=>String(p.id||"").match(/^(.*?)::/)?.[1]).filter(Boolean));
   const origin=origins.size===1?[...origins][0]:null;
   const sourceSquad=origin&&state.clubSquads[origin];
-  const copiedRoster=own.length===0&&!!sourceSquad&&transferred.length===sourceSquad.length&&
-   transferred.every(p=>sourceSquad.some(s=>String(s.id)===String(p.id)));
+  const copiedRoster=own.length===0&&((!!sourceSquad&&transferred.length===sourceSquad.length&&
+   transferred.every(p=>sourceSquad.some(s=>String(s.id)===String(p.id))))||matchesOtherClubSquad(club,cur));
   const realNames=new Set(real.map(x=>x[1]));
   const alreadyReal=own.filter(p=>realNames.has(p.name));
   if(alreadyReal.length<Math.max(1,Math.min(own.length,3)) || own.length<=11){
@@ -864,6 +880,7 @@ function combineMatchSegments(first,second,finalHome,finalAway){
 function liveMatchEvents(pending){return pending.phase==="first"?pending.firstHalf?.events||[]:pending.secondHalf?.events||[]}
 function scheduleLiveMatchEvent(){
  const pending=state.pendingMatch,pb=pending?.playback;
+ if(pb?.goalOverlay){pb.goalOverlay=null;pb.paused=false;}
  if(matchPlaybackTimer!==null||state.tab!=="Match Report"||!pb||pb.paused||!(["first","second"].includes(pending.phase)))return;
  const event=liveMatchEvents(pending)[pb.index];
  const delay=event?.type==="goal"?2600:event?.type==="half"?900:1400;
@@ -878,17 +895,11 @@ function advanceLiveMatchEvent(){
  pb.index++;pb.shown=Array.isArray(pb.shown)?pb.shown:[];pb.shown.push(event);
  if(event.type==="goal"){
   const side=event.team===pending.fixture.home?0:1;pb.score=Array.isArray(pb.score)?pb.score:[0,0];pb.score[side]++;
-  pb.goalOverlay={event,score:pb.score.slice()};pb.paused=true;
+  pb.goalOverlay=null;
  }
  if(event.type==="half"){pending.phase="halftime";pb.paused=true;}
  save();render();
 }
-function stepLiveMatchEvent(){
- if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}
- const pb=state.pendingMatch?.playback;if(pb)pb.paused=true;
- advanceLiveMatchEvent();
-}
-function continueAfterGoal(){const pb=state.pendingMatch?.playback;if(!pb)return;pb.goalOverlay=null;pb.paused=false;save();render()}
 function toggleLiveMatchPlayback(){
  const pb=state.pendingMatch?.playback;if(!pb)return;
  if(pb.paused){pb.paused=false;scheduleLiveMatchEvent();}
@@ -896,11 +907,6 @@ function toggleLiveMatchPlayback(){
  save();render();
 }
 function liveEventIcon(type){return type==="goal"?"⚽":type==="yellow"?"🟨":type==="red"?"🟥":type==="save"?"🧤":type==="chance"?"🔥":type==="shot"?"🎯":type==="half"?"⏸️":type==="full"?"🏁":"•"}
-function liveGoalOverlay(pending){
- const overlay=pending.playback?.goalOverlay;if(!overlay)return "";
- const e=overlay.event;
- return `<div class="goal-overlay" role="alertdialog" aria-label="Goal scored"><div class="goal-panel"><div class="goal-word">GOAL!</div><div class="goal-score">${overlay.score[0]} – ${overlay.score[1]}</div><div class="goal-copy"><b>${e.player||"Goal scorer"}</b><br>${e.team} • ${e.minute}'</div><div class="sub" style="margin-top:8px">${e.text}</div><button class="primary goal-dismiss" onclick="continueAfterGoal()">Continue match</button></div></div>`;
-}
 function playMatch(){
  if(state.managerFired){state.tab="Jobs";state.jobNotice=`You were dismissed by ${state.club}. Apply for another club to continue your career.`;save();render();return;}
  if(state.pendingMatch){state.tab="Match Report";render();return;}
@@ -996,8 +1002,8 @@ function matchReportPage(){
   if(["first","second"].includes(p.phase)){
    const pb=p.playback||(p.playback={segment:p.phase,index:0,shown:[],score:p.phase==="second"?[m.hg,m.ag]:[0,0],goalOverlay:null,paused:false});
    const events=(pb.shown||[]).map(e=>`<div class="live-event"><b class="live-minute">${e.minute}'</b><span class="live-icon">${liveEventIcon(e.type)}</span><span>${e.text}</span></div>`).join("");
-   const segment=p.phase==="first"?"First half":"Second half",total=liveMatchEvents(p).length;
-   document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday+1} • ${segment}</div><h2 class="live-score">${p.fixture.home} <span>${pb.score?.[0]||0} – ${pb.score?.[1]||0}</span> ${p.fixture.away}</h2><div class="sub" style="text-align:center">${segment} • Update ${Math.min(pb.index,total)} of ${total}</div></div><div class="card"><div class="row"><h3>Live commentary</h3><span class="sub">Events play automatically</span></div><div id="liveEventFeed" class="live-feed" aria-live="polite">${events||'<div class="sub" style="padding:12px 0">Kick-off. The teams are settling into the match.</div>'}</div><div class="live-controls"><button onclick="toggleLiveMatchPlayback()">${pb.paused?"Resume":"Pause"}</button><button class="primary" onclick="stepLiveMatchEvent()">Next update</button></div></div>${liveGoalOverlay(p)}`;
+   const segment=p.phase==="first"?"First half":"Second half";
+   document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday+1} • ${segment}</div><h2 class="live-score">${p.fixture.home} <span>${pb.score?.[0]||0} – ${pb.score?.[1]||0}</span> ${p.fixture.away}</h2></div><div class="card"><div class="row"><h3>Live commentary</h3><span class="sub">Events play automatically</span></div><div id="liveEventFeed" class="live-feed" aria-live="polite">${events||'<div class="sub" style="padding:12px 0">Kick-off. The teams are settling into the match.</div>'}</div><div class="live-controls"><button onclick="toggleLiveMatchPlayback()">${pb.paused?"Resume":"Pause"}</button></div></div>`;
    const feed=document.getElementById("liveEventFeed");if(feed)feed.scrollTop=feed.scrollHeight;
    return;
   }
