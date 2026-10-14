@@ -8,8 +8,20 @@ function applyRosterAudit(club,players){
 }
 function playersFor(club){
  let players=[];
- if(seedPlayers[club]) players=seedPlayers[club].map((x,i)=>({id:i,pos:x[0],name:x[1],age:x[2],ovr:x[3]}));
- else {const real=REAL_PRVA_SQUADS[club];if(real)players=real.map((x,i)=>({id:i,pos:x[0],name:x[1],age:19+((i*3)%17),ovr:54+((i*7)%13)}));}
+ if(seedPlayers[club]) players=seedPlayers[club].map((x,i)=>({id:i,pos:x[0],name:x[1],age:x[2],ovr:x[3],rosterSource:"seeded"}));
+ else {
+  const real=REAL_PRVA_SQUADS[club];
+  if(real)players=real.map((x,i)=>({id:i,pos:x[0],name:x[1],age:19+((i*3)%17),ovr:54+((i*7)%13),rosterSource:REAL_SQUAD_SOURCES[club]?"public-roster":"seeded",sourceUrl:REAL_SQUAD_SOURCES[club]||null}));
+  else {
+   const roles=["GK","DEF","DEF","DEF","DEF","MID","MID","MID","MID","ATT","ATT","GK","DEF","DEF","MID","MID","ATT","ATT"];
+   const sourced=SOURCED_LOWER_SQUADS[club]||[];
+   const rosterSize=Math.max(18,sourced.length);
+   const hash=[...club].reduce((sum,ch)=>(sum*31+ch.charCodeAt(0))>>>0,7);
+   // Source-backed matchday names lead the squad; generated depth fills gaps.
+   // Clubs without any source names still receive a distinct, stable roster.
+   players=Array.from({length:rosterSize},(_,i)=>({id:i,pos:roles[i%roles.length],name:sourced[i]||`${club} Player ${String(i+1).padStart(2,"0")}`,age:19+((hash+i*7)%17),ovr:48+((hash+i*11)%13),rosterSource:sourced[i]?"match-sheet":"generated",sourceUrl:sourced[i]?SOURCED_LOWER_SQUAD_SOURCES[club]||null:null}));
+  }
+ }
  return applyRosterAudit(club,players);
 }
 
@@ -89,6 +101,7 @@ function loadInitialState(){
  return JSON.parse(JSON.stringify(DEFAULT_STATE));
 }
 let state=loadInitialState();
+let matchPlaybackTimer=null;
 function applyLeagueMembership(){
  if(state.leagueMembership&&typeof state.leagueMembership==="object"){
   Object.entries(state.leagueMembership).forEach(([name,clubs])=>{if(leagues[name]&&Array.isArray(clubs))leagues[name]=clubs.slice();});
@@ -102,7 +115,19 @@ function seedSquadForClub(club){return playersFor(club).map((p,i)=>({...p,id:`${
 function ensureClubSquads(){
  if(!state.clubSquads||typeof state.clubSquads!=="object")state.clubSquads={};
  const all=[...new Set(Object.values(leagues).flat())].filter(c=>c&&!String(c).startsWith("TBD")&&!String(c).includes("regional"));
- all.forEach(c=>{if(!Array.isArray(state.clubSquads[c])||!state.clubSquads[c].length)state.clubSquads[c]=seedSquadForClub(c);});
+ all.forEach(c=>{
+  const squad=state.clubSquads[c];
+  if(!Array.isArray(squad)||!squad.length){state.clubSquads[c]=seedSquadForClub(c);return;}
+  // Repair saves affected by the old empty-squad fallback: a lower-division
+  // club could contain an entire other club's roster, identifiable by its IDs.
+  const originIds=squad.map(p=>String(p.id||"").match(/^(.*?)::/u)?.[1]).filter(Boolean);
+  const foreign=originIds.filter(origin=>origin!==c);
+  if(foreign.length===squad.length&&new Set(foreign).size===1&&state.clubSquads[foreign[0]]?.length){
+   const sourceIds=new Set(state.clubSquads[foreign[0]].map(p=>String(p.id)));
+   if(squad.every(p=>sourceIds.has(String(p.id))))state.clubSquads[c]=seedSquadForClub(c);
+  }
+  if(squad.every(p=>String(p.name||"").startsWith(`${c} Player `)))state.clubSquads[c]=seedSquadForClub(c);
+ });
  if(Array.isArray(state.players)&&state.players.length){
    const existing=state.clubSquads[state.club];
    if(!existing||!existing.length)state.clubSquads[state.club]=state.players.map((p,i)=>({...p,id:p.id??`${state.club}::${i}`}));
@@ -125,12 +150,19 @@ function upgradeRealSquadsV012(){
   const real=REAL_PRVA_SQUADS[club]; const cur=state.clubSquads[club]; if(!Array.isArray(cur)||!cur.length)return;
   const own=cur.filter(p=>String(p.id||"").startsWith(club+"::"));
   const transferred=cur.filter(p=>!String(p.id||"").startsWith(club+"::"));
+  // Older saves may contain a whole foreign club roster copied into this club.
+  // Drop it during the sourced-roster upgrade instead of treating it as transfers.
+  const origins=new Set(transferred.map(p=>String(p.id||"").match(/^(.*?)::/)?.[1]).filter(Boolean));
+  const origin=origins.size===1?[...origins][0]:null;
+  const sourceSquad=origin&&state.clubSquads[origin];
+  const copiedRoster=own.length===0&&!!sourceSquad&&transferred.length===sourceSquad.length&&
+   transferred.every(p=>sourceSquad.some(s=>String(s.id)===String(p.id)));
   const realNames=new Set(real.map(x=>x[1]));
   const alreadyReal=own.filter(p=>realNames.has(p.name));
   if(alreadyReal.length<Math.max(1,Math.min(own.length,3)) || own.length<=11){
     const base=playersFor(club).map((p,i)=>({...p,id:`${club}::${i}`}));
     const byName=new Set(base.map(p=>p.name));
-    state.clubSquads[club]=base.concat(transferred.filter(p=>!byName.has(p.name)));
+    state.clubSquads[club]=base.concat((copiedRoster?[]:transferred).filter(p=>!byName.has(p.name)));
   }
  });
 }
@@ -145,7 +177,33 @@ function squadRating(){
  const depth=sorted.slice(11).reduce((a,p)=>a+p.ovr,0)/(Math.max(1,sorted.length-11));
  return Math.round(topAvg*0.82 + (sorted.length>11?depth*0.18:0));
 }
+function squadSourceNote(){
+ const counts={};(state.players||[]).forEach(p=>{const label=p.rosterSource||"existing save";counts[label]=(counts[label]||0)+1;});
+ const labels={"public-roster":"public-roster names","match-sheet":"match-sheet names",generated:"generated depth",seeded:"seeded roster names","existing save":"saved squad players"};
+ const urls=[...new Set((state.players||[]).map(p=>p.sourceUrl).filter(Boolean))];
+ const summary=Object.entries(counts).map(([k,n])=>`${n} ${labels[k]||k}`).join(" · ");
+ return `<div class="sub">${summary}${urls.length?` · ${urls.map((url,i)=>`<a href="${url}" target="_blank" rel="noopener">Source ${i+1}</a>`).join(" · ")}`:""}</div>`;
+}
 function teamRating(club){if(club===state.club)return squadRating()||TEAM_RATING[club]||DEFAULT_RATING;ensureClubSquads();const ps=state.clubSquads[club]||[];if(ps.length)return Math.round(ps.reduce((a,p)=>a+p.ovr,0)/ps.length)||DEFAULT_RATING;return TEAM_RATING[club]||DEFAULT_RATING}
+function historicalGoalFactors(club){
+ const seasons=HISTORICAL_LEAGUE_GOALS?.[state.league]||[];let attackLog=0,defenseLog=0,weightTotal=0;
+ seasons.forEach((season,i)=>{const goals=season.clubs[club];if(!goals)return;const avg=Object.values(season.clubs).reduce((n,g)=>n+g[0],0)/Object.values(season.clubs).length/season.played;const against=Object.values(season.clubs).reduce((n,g)=>n+g[1],0)/Object.values(season.clubs).length/season.played;const w=i===0?.68:.32;attackLog+=w*Math.log(Math.max(.45,goals[0]/season.played/avg));defenseLog+=w*Math.log(Math.max(.45,goals[1]/season.played/against));weightTotal+=w;});
+ return weightTotal?{attack:Math.exp(attackLog/weightTotal),concede:Math.exp(defenseLog/weightTotal)}:{attack:1,concede:1};
+}
+function recentFormFactor(club){
+ const rounds=state.results||[],form=[];for(let i=rounds.length-1;i>=0&&form.length<5;i--){const r=rounds[i]?.find(x=>x.home===club||x.away===club);if(!r)continue;const h=r.home===club?r.hg:r.ag,a=r.home===club?r.ag:r.hg;form.push(h>a?3:h===a?1:0);}
+ if(form.length<3)return 1;const ppg=form.reduce((a,x)=>a+x,0)/form.length;return Math.max(.92,Math.min(1.08,1+(ppg-1.35)*.045));
+}
+function teamGoalStrength(club){
+ const h=historicalGoalFactors(club),rating=Math.max(45,Math.min(85,teamRating(club)||DEFAULT_RATING));
+ // Squad strength anchors historical performance; short historical samples are shrunk toward neutral.
+ const prior=Math.exp((rating-65)*.022);return{attack:Math.max(.62,Math.min(1.65,Math.sqrt(h.attack)*Math.sqrt(prior)*recentFormFactor(club))),concede:Math.max(.62,Math.min(1.65,Math.sqrt(h.concede)/Math.sqrt(prior)/recentFormFactor(club)))};
+}
+function expectedGoalsForFixture(home,away,referee=assignReferee()){
+ const h=teamGoalStrength(home),a=teamGoalStrength(away),rates=refereeGoalRates(referee);
+ return{home:Math.max(.18,Math.min(3.4,1.28*h.attack*a.concede*1.07*Math.exp(rates.home))),away:Math.max(.16,Math.min(3.2,1.02*a.attack*h.concede*Math.exp(rates.away)))};
+}
+function tacticGoalMultiplier(tactic){return tactic==="Attacking"?1.12:tactic==="Defensive"?.92:tactic==="Ultra Defensive"?.84:tactic==="Counter-Attack"?1.055:tactic==="Tiki-Taka"?1.04:1}
 function playableClubsForLeague(name){return (leagues[name]||[]).filter(c=>c&&!String(c).startsWith("TBD")&&!String(c).includes("regional"));}
 function leagueClubs(){return playableClubsForLeague(state.league)}
 function meetingsForLeague(name=state.league){return name==="Premijer Liga BiH"?4:2}
@@ -567,6 +625,7 @@ function render(){
  ({Home:home,"Squad & Tactics":squad,"Player Stats":playerStatsPage,League:league,Results:resultsPage,Cup:cup,Jobs:jobs,Transfers:transfers,"Match Report":matchReportPage,"Season Report":seasonReportPage,History:historyPage}[state.tab]||home)();
  document.getElementById("celebrationOverlay")?.remove();
  if(state.celebration)celebrationOverlay();
+ scheduleLiveMatchEvent();
 }
 function home(){
  const pos=standings().findIndex(x=>x.club===state.club)+1,total=seasonMatchdays();
@@ -579,8 +638,8 @@ function fixtureForRound(round){const n=leagueClubs().length;return state.fixtur
 function nextOpponent(){const total=seasonMatchdays();if(state.matchday>=total)return"Season complete";const f=fixtureForRound(state.matchday).find(x=>x.home===state.club||x.away===state.club);if(!f)return"Schedule pending";return`${f.home===state.club?"Home":"Away"} • ${f.home===state.club?f.away:f.home}`}
 function poissonish(lambda){const rate=Math.max(0,Number(lambda)||0),limit=Math.exp(-rate);let product=1,count=0;do{count++;product*=Math.random()}while(product>limit);return count-1}
 function simulateFixture(f,referee=assignReferee()){
- const diff=teamRating(f.home)+3.5-teamRating(f.away),rates=refereeGoalRates(referee);
- return{home:f.home,away:f.away,hg:Math.min(poissonish(Math.max(.25,1.25+diff*.055+rates.home)),6),ag:Math.min(poissonish(Math.max(.2,1.05-diff*.045+rates.away)),6),referee:referee.name,refereeProfile:referee.id};
+ const xg=expectedGoalsForFixture(f.home,f.away,referee);
+ return{home:f.home,away:f.away,hg:Math.min(poissonish(xg.home),6),ag:Math.min(poissonish(xg.away),6),referee:referee.name,refereeProfile:referee.id};
 }
 function applyResult(r){const h=state.table[r.home],a=state.table[r.away];h.p++;a.p++;h.gf+=r.hg;h.ga+=r.ag;a.gf+=r.ag;a.ga+=r.hg;if(r.hg>r.ag){h.w++;h.pts+=3;a.l++}else if(r.hg<r.ag){a.w++;a.pts+=3;h.l++}else{h.d++;a.d++;h.pts++;a.pts++}}
 function standings(){return Object.values(state.table).sort((a,b)=>b.pts-a.pts||(b.gf-b.ga)-(a.gf-a.ga)||b.gf-a.gf||b.w-a.w||a.club.localeCompare(b.club))}
@@ -631,7 +690,24 @@ const REFEREE_PROFILES=[
  {id:"strict",name:"Strict",strictness:1,homeBias:0,goalPressure:.035},
  {id:"home_favoring",name:"Home-favoring",strictness:0,homeBias:.16,goalPressure:.01}
 ];
-function assignReferee(){return {...REFEREE_PROFILES[Math.floor(Math.random()*REFEREE_PROFILES.length)]}}
+// NFSBiH's published 2026/27 Premijer Liga A-list. The gameplay profile is
+// assigned separately and is not a claim about an official's real tendencies.
+const BIH_REFEREES_2026_27=[
+ "Nemanja Aleksić","Antoni Bandić","Luka Bilbija","Armin Efendić","Darko Gedžić",
+ "Miloš Gigović","Haris Halkić","Frano Jelić","Mirza Kazlagić","Dragan Kesić",
+ "Armin Kukić","Nihad Ljajić","Dražen Marić","Josip Martinović","Mateo Musa",
+ "Admir Musić","Aleksandar Njegomirović","Irfan Peljto","Dragan Petrović",
+ "Ermin Sivac","Dragan Todić","Antonio Tomić","Sabrija Topalović"
+];
+function assignReferee(){
+ const profile=REFEREE_PROFILES[Math.floor(Math.random()*REFEREE_PROFILES.length)];
+ const name=BIH_REFEREES_2026_27[Math.floor(Math.random()*BIH_REFEREES_2026_27.length)];
+ return {...profile,name,profileName:profile.name};
+}
+function refereeSummary(m){
+ const profile=REFEREE_PROFILES.find(p=>p.id===m.refereeProfile);
+ return `${m.referee||"Not recorded"} · ${profile?.name||"Balanced"} game profile (simulated)`;
+}
 function refereeGoalRates(referee){return {home:referee.homeBias+referee.goalPressure,away:-referee.homeBias*.55+referee.goalPressure}}
 function generateMatchReport(r,referee=assignReferee()){
  const homeXI=lineupForStats(r.home), awayXI=lineupForStats(r.away);
@@ -785,6 +861,46 @@ function combineMatchSegments(first,second,finalHome,finalAway){
  const possession=[Math.round((first.stats.possession[0]+second.stats.possession[0])/2),0];possession[1]=100-possession[0];
  return {...first,hg:finalHome,ag:finalAway,events,homeScorers:[...first.homeScorers,...second.homeScorers],awayScorers:[...first.awayScorers,...second.awayScorers],stats:{possession,shots:addPair(first.stats.shots,second.stats.shots),shotsOnTarget:addPair(first.stats.shotsOnTarget,second.stats.shotsOnTarget),corners:addPair(first.stats.corners,second.stats.corners)}};
 }
+function liveMatchEvents(pending){return pending.phase==="first"?pending.firstHalf?.events||[]:pending.secondHalf?.events||[]}
+function scheduleLiveMatchEvent(){
+ const pending=state.pendingMatch,pb=pending?.playback;
+ if(matchPlaybackTimer!==null||state.tab!=="Match Report"||!pb||pb.paused||!(["first","second"].includes(pending.phase)))return;
+ const event=liveMatchEvents(pending)[pb.index];
+ const delay=event?.type==="goal"?2600:event?.type==="half"?900:1400;
+ matchPlaybackTimer=setTimeout(()=>{matchPlaybackTimer=null;if(state.tab==="Match Report")advanceLiveMatchEvent()},delay);
+}
+function advanceLiveMatchEvent(){
+ const pending=state.pendingMatch,pb=pending?.playback;
+ if(!pending||!pb||!(["first","second"].includes(pending.phase)))return;
+ pb.goalOverlay=null;
+ const event=liveMatchEvents(pending)[pb.index];
+ if(!event){if(pending.phase==="first"){pending.phase="halftime";pb.paused=true;}else completePendingMatch();save();render();return;}
+ pb.index++;pb.shown=Array.isArray(pb.shown)?pb.shown:[];pb.shown.push(event);
+ if(event.type==="goal"){
+  const side=event.team===pending.fixture.home?0:1;pb.score=Array.isArray(pb.score)?pb.score:[0,0];pb.score[side]++;
+  pb.goalOverlay={event,score:pb.score.slice()};pb.paused=true;
+ }
+ if(event.type==="half"){pending.phase="halftime";pb.paused=true;}
+ save();render();
+}
+function stepLiveMatchEvent(){
+ if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}
+ const pb=state.pendingMatch?.playback;if(pb)pb.paused=true;
+ advanceLiveMatchEvent();
+}
+function continueAfterGoal(){const pb=state.pendingMatch?.playback;if(!pb)return;pb.goalOverlay=null;pb.paused=false;save();render()}
+function toggleLiveMatchPlayback(){
+ const pb=state.pendingMatch?.playback;if(!pb)return;
+ if(pb.paused){pb.paused=false;scheduleLiveMatchEvent();}
+ else{if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}pb.paused=true;}
+ save();render();
+}
+function liveEventIcon(type){return type==="goal"?"⚽":type==="yellow"?"🟨":type==="red"?"🟥":type==="save"?"🧤":type==="chance"?"🔥":type==="shot"?"🎯":type==="half"?"⏸️":type==="full"?"🏁":"•"}
+function liveGoalOverlay(pending){
+ const overlay=pending.playback?.goalOverlay;if(!overlay)return "";
+ const e=overlay.event;
+ return `<div class="goal-overlay" role="alertdialog" aria-label="Goal scored"><div class="goal-panel"><div class="goal-word">GOAL!</div><div class="goal-score">${overlay.score[0]} – ${overlay.score[1]}</div><div class="goal-copy"><b>${e.player||"Goal scorer"}</b><br>${e.team} • ${e.minute}'</div><div class="sub" style="margin-top:8px">${e.text}</div><button class="primary goal-dismiss" onclick="continueAfterGoal()">Continue match</button></div></div>`;
+}
 function playMatch(){
  if(state.managerFired){state.tab="Jobs";state.jobNotice=`You were dismissed by ${state.club}. Apply for another club to continue your career.`;save();render();return;}
  if(state.pendingMatch){state.tab="Match Report";render();return;}
@@ -797,14 +913,13 @@ function playMatch(){
  const referee=assignReferee(),results=round.map(f=>simulateFixture(f,f.home===my.home&&f.away===my.away?referee:assignReferee())),idx=results.findIndex(r=>r.home===my.home&&r.away===my.away);
  const starters=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
  const avg=starters.length?starters.reduce((a,p)=>a+p.ovr,0)/starters.length:teamRating(state.club);
- const mod=(avg-teamRating(state.club))*.025+(state.mentality==="Attacking"?.04:state.mentality==="Defensive"?-.02:state.mentality==="Ultra Defensive"?-.035:state.mentality==="Counter-Attack"?.025:state.mentality==="Tiki-Taka"?.02:0);
- const diff=(my.home===state.club?avg:teamRating(my.home))+3.5-(my.away===state.club?avg:teamRating(my.away));
- const refRates=refereeGoalRates(referee);
- const homeFirst=Math.min(poissonish(Math.max(.2,.62+diff*.026+mod*.45+refRates.home/2)),4),awayFirst=Math.min(poissonish(Math.max(.2,.52-diff*.022-mod*.2+refRates.away/2)),4);
+ const xg=expectedGoalsForFixture(my.home,my.away,referee),squadFactor=Math.max(.9,Math.min(1.1,1+(avg-teamRating(state.club))*.012));
+ const homeIsUser=my.home===state.club,homeTactic=homeIsUser?tacticGoalMultiplier(state.mentality):1,awayTactic=!homeIsUser?tacticGoalMultiplier(state.mentality):1;
+ const homeFirst=Math.min(poissonish(xg.home*.46*(homeIsUser?squadFactor:1)*homeTactic),4),awayFirst=Math.min(poissonish(xg.away*.46*(!homeIsUser?squadFactor:1)*awayTactic),4);
  const firstRaw=generateMatchReport({home:my.home,away:my.away,hg:homeFirst,ag:awayFirst},referee);
  const first=remapMatchSegment(firstRaw,1,45,"half");
  results[idx]={home:my.home,away:my.away,hg:homeFirst,ag:awayFirst};
- state.pendingMatch={results,roundIndex:idx,fixture:{...my},firstHalf:first,referee,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
+ state.pendingMatch={results,roundIndex:idx,fixture:{...my},firstHalf:first,referee,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
  state.lastMatch={...first,hg:homeFirst,ag:awayFirst,halfTime:true};
  state.tab="Match Report";save();render();
 }
@@ -827,15 +942,14 @@ function resumeSecondHalf(){
  }
  const starters=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
  const avg=starters.length?starters.reduce((a,p)=>a+p.ovr,0)/starters.length:teamRating(state.club);
- const diff=(fixture.home===state.club?avg:teamRating(fixture.home))+3.5-(fixture.away===state.club?avg:teamRating(fixture.away));
- const tacticMod=state.mentality==="Attacking"?.18:state.mentality==="Defensive"?-.10:state.mentality==="Ultra Defensive"?-.18:state.mentality==="Counter-Attack"?.10:state.mentality==="Tiki-Taka"?.08:0;
- const talkMod=choices.talk==="Encourage"?.10:choices.talk==="Demand more"?.07:choices.talk==="Calm down"?-.015:0;
- const subMod=substitutionText.includes("replaces")?.04:0;
+ const referee=pending.referee||assignReferee();
+ const xg=expectedGoalsForFixture(fixture.home,fixture.away,referee),squadFactor=Math.max(.9,Math.min(1.1,1+(avg-teamRating(state.club))*.012));
+ const tacticFactor=tacticGoalMultiplier(state.mentality);
+ const talkFactor=choices.talk==="Encourage"?1.045:choices.talk==="Demand more"?1.035:choices.talk==="Calm down"?.99:1;
+ const subFactor=substitutionText.includes("replaces")?1.025:1;
  const homeIsUser=fixture.home===state.club;
- const homeTactic=homeIsUser?tacticMod:0, awayTactic=homeIsUser?0:tacticMod;
- const referee=pending.referee||assignReferee(),refRates=refereeGoalRates(referee);
- const homeSecond=Math.min(poissonish(Math.max(.18,.57+diff*.024+homeTactic+talkMod*(homeIsUser?1:0)+subMod*(homeIsUser?1:0)+refRates.home/2)),4);
- const awaySecond=Math.min(poissonish(Math.max(.18,.50-diff*.021+awayTactic+talkMod*(homeIsUser?0:1)+subMod*(homeIsUser?0:1)+refRates.away/2)),4);
+ const homeSecond=Math.min(poissonish(xg.home*.54*(homeIsUser?squadFactor*tacticFactor*talkFactor*subFactor:1)),4);
+ const awaySecond=Math.min(poissonish(xg.away*.54*(!homeIsUser?squadFactor*tacticFactor*talkFactor*subFactor:1)),4);
  const secondRaw=generateMatchReport({home:fixture.home,away:fixture.away,hg:homeSecond,ag:awaySecond},referee);
  const second=remapMatchSegment(secondRaw,46,90,"full");
  const finalHome=first.hg+homeSecond,finalAway=first.ag+awaySecond;
@@ -852,8 +966,18 @@ function resumeSecondHalf(){
  finalXI.forEach(p=>{if(!initialXI.some(x=>x.id===p.id))userApps.push({player:p,minutes:45,starts:false});});
  appearanceMap[state.club]=userApps;
  report.appearances=appearanceMap;
+ pending.secondHalf=second;pending.finalReport=report;pending.phase="second";
+ pending.playback={segment:"second",index:0,shown:[],score:[first.hg,first.ag],goalOverlay:null,paused:false};
+ state.pendingMatch=pending;state.lastMatch={...first,hg:first.hg,ag:first.ag,halfTime:true};
+ state.tab="Match Report";save();render();
+}
+function completePendingMatch(){
+ const pending=state.pendingMatch;if(!pending||!pending.finalReport)return;
+ const report=pending.finalReport,fixture=pending.fixture;
+ const finalHome=report.hg,finalAway=report.ag;
  // Only commit the matchday after the manager completes the second half.
  updatePlayerStatsFromReport(report);
+ const roundResults=pending.results;
  roundResults.forEach((x,i)=>{if(i!==pending.roundIndex)updatePlayerStatsForResult(x);applyResult(x)});
  state.results.push(roundResults);state.lastMatch=report;state.pendingMatch=null;state.matchday++;
  advanceOtherLeaguesOneRound(state.league);
@@ -868,8 +992,18 @@ function resumeSecondHalf(){
 function matchReportPage(){
  if(state.pendingMatch){
   const p=state.pendingMatch,m=p.firstHalf,choices=p.secondHalfChoices||(p.secondHalfChoices={tactic:"Attacking",talk:"Encourage",substitution:"none"});
-  const events=m.events.map(e=>`<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)"><b style="min-width:42px">${e.minute}'</b><span>${e.type==="goal"?"⚽":e.type==="yellow"?"🟨":e.type==="red"?"🟥":e.type==="save"?"🧤":e.type==="chance"?"🔥":e.type==="shot"?"🎯":"•"} ${e.text}</span></div>`).join("");
-  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday+1}</div><h2 style="text-align:center">HALF-TIME</h2><h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2><div class="notice">Referee profile: <b>${m.referee||"Not recorded"}</b><div class="sub">The assigned profile affects goal rates and disciplinary decisions.</div></div></div><div class="card"><h3>First-half report</h3>${events}</div><div class="card"><h3>Second-half tactics</h3><label>Team mentality</label><select id="htTactic" style="width:100%;margin:6px 0 12px"><option ${choices.tactic==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${choices.tactic==="Defensive"?"selected":""}>Defensive</option><option ${choices.tactic==="Balanced"?"selected":""}>Balanced</option><option ${choices.tactic==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${choices.tactic==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${choices.tactic==="Attacking"?"selected":""}>Attacking</option></select><label>Team talk</label><select id="htTalk" style="width:100%;margin:6px 0 12px"><option ${choices.talk==="Encourage"?"selected":""}>Encourage</option><option ${choices.talk==="Demand more"?"selected":""}>Demand more</option><option ${choices.talk==="Calm down"?"selected":""}>Calm down</option></select><label>Half-time substitution</label><select id="htSub" style="width:100%;margin:6px 0 12px"><option value="none" ${choices.substitution==="none"?"selected":""}>No substitution</option><option value="fresh" ${choices.substitution==="fresh"?"selected":""}>Replace lowest-rated starter with best available substitute</option><option value="attacking" ${choices.substitution==="attacking"?"selected":""}>Make an attacking change</option></select><button class="primary" style="width:100%" onclick="saveHalfTimeChoicesAndResume()">Apply changes & play second half</button><p class="sub">Your choices affect the second-half goal simulation. The matchday and league table are not committed until full-time.</p></div>`;return;
+  if(!p.phase)p.phase="halftime"; // Older saves paused here before live playback was introduced.
+  if(["first","second"].includes(p.phase)){
+   const pb=p.playback||(p.playback={segment:p.phase,index:0,shown:[],score:p.phase==="second"?[m.hg,m.ag]:[0,0],goalOverlay:null,paused:false});
+   const events=(pb.shown||[]).map(e=>`<div class="live-event"><b class="live-minute">${e.minute}'</b><span class="live-icon">${liveEventIcon(e.type)}</span><span>${e.text}</span></div>`).join("");
+   const segment=p.phase==="first"?"First half":"Second half",total=liveMatchEvents(p).length;
+   document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday+1} • ${segment}</div><h2 class="live-score">${p.fixture.home} <span>${pb.score?.[0]||0} – ${pb.score?.[1]||0}</span> ${p.fixture.away}</h2><div class="sub" style="text-align:center">${segment} • Update ${Math.min(pb.index,total)} of ${total}</div></div><div class="card"><div class="row"><h3>Live commentary</h3><span class="sub">Events play automatically</span></div><div id="liveEventFeed" class="live-feed" aria-live="polite">${events||'<div class="sub" style="padding:12px 0">Kick-off. The teams are settling into the match.</div>'}</div><div class="live-controls"><button onclick="toggleLiveMatchPlayback()">${pb.paused?"Resume":"Pause"}</button><button class="primary" onclick="stepLiveMatchEvent()">Next update</button></div></div>${liveGoalOverlay(p)}`;
+   const feed=document.getElementById("liveEventFeed");if(feed)feed.scrollTop=feed.scrollHeight;
+   return;
+  }
+  const shown=p.playback?.shown;
+  const halfEvents=(Array.isArray(shown)&&shown.length?shown:m.events).map(e=>`<div class="live-event"><b class="live-minute">${e.minute}'</b><span class="live-icon">${liveEventIcon(e.type)}</span><span>${e.text}</span></div>`).join("");
+  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday+1}</div><h2 style="text-align:center">HALF-TIME</h2><h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2><div class="notice">Referee: <b>${refereeSummary(m)}</b><div class="sub">The game profile affects goal rates and disciplinary decisions. It is simulated and does not describe the named official's real style.</div></div></div><div class="card"><h3>First-half commentary</h3><div class="live-feed" aria-live="polite">${halfEvents}</div></div><div class="card"><h3>Second-half tactics</h3><label>Team mentality</label><select id="htTactic" style="width:100%;margin:6px 0 12px"><option ${choices.tactic==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${choices.tactic==="Defensive"?"selected":""}>Defensive</option><option ${choices.tactic==="Balanced"?"selected":""}>Balanced</option><option ${choices.tactic==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${choices.tactic==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${choices.tactic==="Attacking"?"selected":""}>Attacking</option></select><label>Team talk</label><select id="htTalk" style="width:100%;margin:6px 0 12px"><option ${choices.talk==="Encourage"?"selected":""}>Encourage</option><option ${choices.talk==="Demand more"?"selected":""}>Demand more</option><option ${choices.talk==="Calm down"?"selected":""}>Calm down</option></select><label>Half-time substitution</label><select id="htSub" style="width:100%;margin:6px 0 12px"><option value="none" ${choices.substitution==="none"?"selected":""}>No substitution</option><option value="fresh" ${choices.substitution==="fresh"?"selected":""}>Replace lowest-rated starter with best available substitute</option><option value="attacking" ${choices.substitution==="attacking"?"selected":""}>Make an attacking change</option></select><button class="primary" style="width:100%" onclick="saveHalfTimeChoicesAndResume()">Apply changes & start second-half commentary</button><p class="sub">Your choices affect the second-half simulation. The matchday and league table are not committed until full-time.</p></div>`;return;
  }
  const m=state.lastMatch;
  if(!m){document.getElementById("app").innerHTML='<div class="card"><h2>Match Report</h2><div class="sub">Play a match to generate a detailed match report.</div></div>';return}
@@ -884,7 +1018,7 @@ function matchReportPage(){
  document.getElementById("app").innerHTML=`
  <div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}</div>
  <h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2>
- <p style="text-align:center" class="sub">${myScore>oppScore?"🏆 Victory":myScore<oppScore?"Defeat":"Draw"} • ${state.mentality}</p><div class="notice">Referee profile: <b>${m.referee||"Not recorded"}</b><div class="sub">The assigned profile affected goal rates and disciplinary decisions. Tendencies are simulated mechanics, not claims about named officials.</div></div></div>
+ <p style="text-align:center" class="sub">${myScore>oppScore?"🏆 Victory":myScore<oppScore?"Defeat":"Draw"} • ${state.mentality}</p><div class="notice">Referee: <b>${refereeSummary(m)}</b><div class="sub">The game profile affected goal rates and disciplinary decisions. It is simulated and does not describe the named official's real style.</div></div></div>
  <div class="card"><h3>Match timeline</h3>${events}</div>
  <div class="card"><h3>Match statistics</h3>
  <div class="row"><span>Possession</span><b>${homePoss}% — ${awayPoss}%</b></div>
@@ -904,7 +1038,9 @@ function squad(){
  if(!state.players.length)initClub(); normalizeXI();
  let formation=formations[state.formation],mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||null}));
  const bench=state.players.filter(p=>!state.xi.includes(p.id));
- document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div></div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div><div class="pitch">${mapped.map(m=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?`<div class="list">${bench.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs</span></span><b>${p.ovr}</b><span class="sub">BENCH</span></div>`).join("")}</div>`:`<div class="notice">No additional verified squad players are loaded for this club yet.</div>`}</div><div class="card"><h3>Squad</h3><div class="list">${state.players.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs</span></span><b>${p.ovr}</b><button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11?"disabled":""}>Sell</button></div>`).join("")}</div></div>`}
+ const sourceLabel=p=>p.rosterSource==="match-sheet"?"Match sheet":p.rosterSource==="public-roster"?"Public roster":p.rosterSource==="generated"?"Generated depth":"Seeded roster";
+ const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs • ${sourceLabel(p)}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11?"disabled":""}>Sell</button>`:""}</div>`).join("")}</div>`;
+ document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div><div class="pitch">${mapped.map(m=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
 function changeFormation(f){state.formation=f;normalizeXI();save();render()}
 function replaceXI(i,id){
  normalizeXI(); id=String(id);
@@ -922,7 +1058,7 @@ function cupClubs(){return shuffle(["FK Sarajevo","FK Željezničar","FK Borac B
 function initCup(){if(state.cup&&state.cup.season===state.season)return;let clubs=cupClubs();state.cup={season:state.season,round:1,roundName:"Round of 32",pending:clubs.map((c,i)=>({home:c,away:clubs[i^1]})).filter((x,i,a)=>i%2===0),results:[],winner:null,played:false,rewardMoney:0};}
 function cupCurrentFixture(){initCup();return state.cup.pending.find(f=>f.home===state.club||f.away===state.club)||null}
 function cupRoundName(r){return ["","Round of 32","Round of 16","Quarter-final","Semi-final","Final"][r]||"Cup"}
-function simulateCupGame(f){const diff=teamRating(f.home)+3.5-teamRating(f.away);let hg=Math.min(poissonish(Math.max(.3,1.2+diff*.055)),6),ag=Math.min(poissonish(Math.max(.25,1.05-diff*.045)),6);if(hg===ag){if(Math.random()<teamRating(f.home)/(teamRating(f.home)+teamRating(f.away)))hg++;else ag++;}return{...f,hg,ag};}
+function simulateCupGame(f){const referee=assignReferee(),xg=expectedGoalsForFixture(f.home,f.away,referee);let hg=Math.min(poissonish(xg.home),6),ag=Math.min(poissonish(xg.away),6);if(hg===ag){if(Math.random()<teamRating(f.home)/(teamRating(f.home)+teamRating(f.away)))hg++;else ag++;}return{...f,hg,ag,referee:referee.name,refereeProfile:referee.id};}
 function playCup(){if(state.managerFired){state.tab="Jobs";state.jobNotice=`You were dismissed by ${state.club}. Apply for another club to continue your career.`;save();render();return;}initCup();const f=cupCurrentFixture();if(!f){alert("Your club has no cup match in this round.");return;}let games=state.cup.pending.map(x=>simulateCupGame(x));games.forEach(r=>updatePlayerStatsForResult(r,"cup"));state.cup.results.push(games);let winners=games.map(r=>r.hg>r.ag?r.home:r.away);let userResult=games.find(r=>r.home===state.club||r.away===state.club);if(userResult){const my=userResult.home===state.club?userResult.hg:userResult.ag,opp=userResult.home===state.club?userResult.ag:userResult.hg;state.rep=Math.max(0,state.rep+(my>opp?2:my===opp?0:-1)); if(my>opp){const prize=cupRewardForRound(state.cup.round); state.balance+=prize; state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}}if(winners.length===1){state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5; if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;addAchievement("cup-win","Kup BiH Winners",`${state.club} won Kup BiH.`,"🏆",{season:state.season,club:state.club});showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Your club receives the winner's bonus!`,"🏆","Cup");}}else{let next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);}save();render();}
 function cup(){initCup();const f=cupCurrentFixture();const last=state.cup.results.length?state.cup.results[state.cup.results.length-1]:[];document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><div class="sub">${state.cup.winner?"Champion: "+state.cup.winner:state.cup.roundName+" • Knockout competition"}</div><div class="sub">Cup earnings: €${(state.cup.rewardMoney||0).toLocaleString()}</div>${f?`<div class="notice"><b>${f.home} vs ${f.away}</b><br>Your cup match is ready.</div><button class="primary" onclick="playCup()">Play cup match</button>`:`<div class="notice">Your club has been eliminated or is awaiting the next draw.</div>`}</div>${last.length?`<div class="card"><h3>Latest cup round</h3>${last.map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line);font-weight:${r.home===state.club||r.away===state.club?'800':'400'}"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>`).join("")}</div>`:""}` }
 function jobs(){

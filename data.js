@@ -22,6 +22,20 @@ const competitionSources={
  "Druga liga RS – Zapad":"https://fsrs.org/sr-BA/takmicenja-regionalne-lige.html",
  "Druga liga RS – Istok":"https://fsrs.org/sr-BA/takmicenja-regionalne-lige.html"
 };
+// Aggregate historical goals from NFSBiH final league tables. These are
+// season-level calibration inputs, not match-by-match data. Recheck when a
+// season finishes; clubs missing from a season use the squad-rating prior.
+const HISTORICAL_LEAGUE_GOALS={
+ "Premijer Liga BiH":[
+  {season:"2025/26",played:36,clubs:{
+   "FK Borac Banja Luka":[76,20],"HŠK Zrinjski Mostar":[48,25],"FK Sarajevo":[54,37],"FK Velež Mostar":[36,35],"NK Široki Brijeg":[37,48],"FK Željezničar":[34,37],"FK Radnik Bijeljina":[27,45],"FK Sloga Doboj":[21,46],"HŠK Posušje":[25,41],"FK Rudar Prijedor":[31,55]
+  }},
+  {season:"2024/25",played:33,clubs:{
+   "HŠK Zrinjski Mostar":[74,17],"FK Borac Banja Luka":[58,13],"FK Sarajevo":[59,24],"FK Željezničar":[55,38],"NK Široki Brijeg":[43,46],"FK Sloga Doboj":[35,45],"FK Velež Mostar":[45,39],"FK Radnik Bijeljina":[44,52],"HŠK Posušje":[36,41],"FK Igman Konjic":[30,66],"NK GOŠK Gabela":[28,76],"FK Sloboda Tuzla":[21,71]
+  }}
+ ]
+};
+const historicalDataSources={"Premijer Liga BiH":["https://www.nfsbih.ba/takmicenja/nogomet-muskarci/wwin-liga-bih?id%5B0%5D=46565761&view=standings","https://www.nfsbih.ba/en/takmicenja/nogomet-muskarci/wwin-liga-bih?id=40605818&view=standings"]};
 const clubNameAliases={"FK Sloga Meridian":"FK Sloga Doboj"};
 
 const seedPlayers={
@@ -87,7 +101,45 @@ const REAL_PRVA_SQUADS={
 "FK Zvijezda 09":[["ATT","Bakir Begagić"],["ATT","Armin Duraković"],["ATT","Miloš Dragičević"],["ATT","Dragan Došlo"],["ATT","Uroš Stanišić"],["ATT","Saša Jovanović"],["ATT","Milan Nikolić"],["MID","Usman Ajibola Owoyemi"],["MID","Stefan Santrač"],["MID","Pavle Savić"],["MID","Saša Erkić"],["MID","Miko Davidović"],["MID","Vuk Aleksić"],["DEF","Medin Hrvić"],["DEF","Lazar Velički"],["DEF","Branislav Milanov"],["DEF","Đorđe Burnjaković"],["DEF","David Tomić"],["DEF","Andrej Pejčinović"],["DEF","Mišo Jović"],["DEF","Bogdan Perušinović"],["GK","Mihajlo Blagojević"],["GK","Luka Alempić"]],
 "FK Drina Zvornik":[["ATT","Nemanja Dragutinović"],["ATT","Mihajlo Mikan"],["ATT","Oleg Tyulkov"],["ATT","Aleksa Stoisavljević"],["MID","Stefan Janjić"],["MID","Danijel Erčić"],["MID","Nikola Pantić"],["MID","Nikola Milinković"],["MID","Veljko Gavrić"],["MID","Stefan Čonjić"],["DEF","Miloš Jokić"],["DEF","Boris Andrić"],["DEF","Dragan Živanović"],["DEF","Tucker Kai Roderick"],["DEF","Vuk Janković"],["DEF","Danijel Gajić"],["GK","Srđan Nedić"],["GK","Lazar Kulić"]],
 "FK Famos Vojkovići":[["ATT","Pedro Lobo"],["ATT","Aimar Balić"],["ATT","Stefan Radaković"],["ATT","Luka Asentić"],["ATT","Danel Blažić"],["ATT","Đorđe Golijanin"],["ATT","Luka Andrić"],["MID","Slobodan Vučinić"],["MID","Sanin Mesić"],["MID","Benjamin Babić"],["MID","Zehrudin Mehmedović"],["MID","Mihajlo Kovač"],["MID","Marko Tešanović"],["MID","Mladen Drakul"],["MID","Đorđe Timotija"],["MID","Nikola Danilović"],["DEF","Sergej Tomić"],["DEF","Marko Škrba"],["DEF","Marko Marković"],["DEF","Stefan Ristivojević"],["GK","Adel Duškaj"],["GK","Sergej Bjelica"],["GK","Marko Terzić"]],
-"FK Majevica Lopare":[["ATT","Matej Jovanović"],["ATT","Mile Teodorović"],["ATT","Radovan Jokanović"],["ATT","Branko Kecman"],["ATT","Rade Ristić"],["ATT","Neđo Gajić"],["ATT","Damjan Petrović"],["ATT","Ilija Despotović"],["MID","Ognjen Maksimović"],["MID","Nemanja Marić"],["MID","Anđelo Delić"],["MID","Simo Bogdanović"],["MID","Saša Varešić"],["MID","Dejan Davidović"],["MID","Stefan Petrović"],["MID","Duško Pajkanović"],["MID","Ljubiša Ristić"],["MID","Jovan Ristić"],["MID","Nikola Mazić"],["MID","Đorđe Marković"],["DEF","Stefan Spasojević"],["DEF","Dragan Cvijetinović"],["DEF","Boban Jolović"],["DEF","Miroslav Kostić"],["DEF","Živan Marković"],["GK","Miloš Papić"],["GK","Rade Babić"],["GK","Miroslav Ilić"]]
+"FK Majevica Lopare":[["ATT","Matej Jovanović"],["ATT","Mile Teodorović"],["ATT","Radovan Jokanović"],["ATT","Branko Kecman"],["ATT","Rade Ristić"],["ATT","Neđo Gajić"],["ATT","Damjan Petrović"],["ATT","Ilija Despotović"],["MID","Ognjen Maksimović"],["MID","Nemanja Marić"],["MID","Anđelo Delić"],["MID","Simo Bogdanović"],["MID","Saša Varešić"],["MID","Dejan Davidović"],["MID","Stefan Petrović"],["MID","Duško Pajkanović"],["MID","Ljubiša Ristić"],["MID","Jovan Ristić"],["MID","Nikola Mazić"],["MID","Đorđe Marković"],["DEF","Stefan Spasojević"],["DEF","Dragan Cvijetinović"],["DEF","Boban Jolović"],["DEF","Miroslav Kostić"],["DEF","Živan Marković"],["GK","Miloš Papić"],["GK","Rade Babić"],["GK","Miroslav Ilić"]],
+// Hercegovac's current 2026/27 player list and position groups from Sofascore,
+// cross-checked against SportDC's Sept 2026 match reports. Age and OVR are game estimates.
+// https://www.sofascore.com/football/team/fk-hercegovac-bileca/488722
+// https://www.sportdc.net/vest/muskarci/178962-rudar-bolji-od-hercegovca/f
+"FK Hercegovac Bileća":[["ATT","Filip Vujović"],["ATT","Aleksandar Albijanić"],["ATT","Marko Ilić"],["ATT","Luka Inić"],["ATT","Dragan Ristić"],["ATT","Andrej Albijanić"],["ATT","Goran Milidragović"],["ATT","Lazar Mrkaić"],["ATT","Stefan Pravica"],["ATT","Dimitrije Samardžić"],["ATT","Uroš Puhalo"],["MID","Rajko Komnenić"],["MID","Vuk Vučić"],["MID","Dragan Skočo"],["MID","Dušan Lero"],["MID","Tripo Jokanović"],["MID","Lazar Puhalo"],["MID","Aleksej Vuković"],["MID","Miloš Starović"],["MID","Srđan Andrić"],["MID","Marko Vujović"],["MID","Vuk Milenić"],["MID","Sergej Malešević"],["MID","Ognjen Milidragović"],["DEF","Nikola Đorđić"],["DEF","Aleksa Bjeletić"],["DEF","Marko Milošević"],["DEF","Marko Pandžić"],["DEF","Miloš Samardžić"],["DEF","Jovan Vujović"],["DEF","Stefan Milojević"],["DEF","Đorđe Salatić"],["DEF","Gavrilo Popadić"],["DEF","Neđeljko Anđušić"],["DEF","Đorđe Samardžić"],["GK","Aleksa Denda"],["GK","Damjan Aleksić"],["GK","Boris Dutina"]]
+};
+// Current-season names transcribed from official NS FBiH match sheets. These
+// are matchday player lists, not claims of complete registrations; generated
+// depth fills out each squad. Positions for these sheets are broad game-role
+// estimates, since the federation reports do not list player positions.
+const SOURCED_LOWER_SQUADS={
+ "FK Gornji Rahić":["Vehid Mrkaljević","Senad Bošnjaković","Mehmed Bijelić","Fatmir Hercegovac","Eman Bekrić","Stefan Božić","Aldin Lišić","Almedin Ibrahimbašić","Hazim Hamidović","Abdulah Salkić","Amar Čaušević","Sead Bećirović","Arnel Ljuca","Arif Zečić","Ermin Kadrić","Arman Ibrišimović","Emrah Omić","Amel Softić","Radovan Vujić"],
+ "NK Orahovica 74":["Enis Softić","Avdo Huskanović","Semir Dedić","Nermin Gazibegović","Haris Muratović","Muhamed Mujić","Emir Hasinović","Adin Mekić","Aziz Bešić","Dženid Gegić","Emir Mešanović","Elmir Kasumi","Arnel Osmanović","Enis Ahmetović","Elmin Mujić","Benjamin Osmanović","Ernad Bešić","Rasim Mešić","Hasan Fišić","Vedad Mešić"],
+ "NK Nemila":["Tarik Plančić","Samed Žuna","Amer Durmić","Nermin Pašalić","Enis Ismić","Anel Dedić","Amar Mašić","Fahir Omerdić","Salih Varupa","Amir Hodžić","Ismar Helvida","Imran Kozlić","Samed Kozlić","Samir Skomorac","Hanan Baručija","Besim Kolić","Anis Buljubašić","Hamza Grahić","Zijad Mujić","Vildan Kasap"],
+ "FK Goražde":["Ajdin Karović","Sedin Hadžić","Nidal Pušilo","Sanin Kanlić","Enver Bajrica","Kerim Topalović","Damir Šovšić","Emil Kavazović","Muhamed Duhović","Nermin Mašić","Harun Hodo","Armin Hodžić","Nanel Kostić","Amel Ćurovac","Ferid Topuz","Kerim Mašić","Amar Srkalović"],
+ "NK Novi Travnik":["Eldin Horozović","Mensur Smajić","Mahir Skopljak","Haris Hasanbegović","Mirza Silajdžija","Hasan Belegić","Enis Šahinović","Luka Rajković","Zerin Sarajlić","Haris Dilaver","Enes Buljubašić","Irfan Berberović","Ahmed Langić","Šekib Vrebac","Adin Habibović","Rijad Goran","Sabahudin Jusufbašić","Bekir Palić","Harun Ibraković","Ammar Sarajčić"],
+ "NK Iskra 1946 Bugojno":["Adnan Konjarić","Kerim Rizvan","Avdo Avdić","Kenan Muratspahić","Almedin Šić","Asim Zec","Adin Čefo","Edis Halilović","Dževad Alibegović","Haris Seferović","Velid Pidro","Benjamin Tataraga","Šimun Lozić-Dole","Selvedin Ramić","Ajdin Karagić","Admir Đelilović","Ammar Delić"],
+ "HNK Brotnjo Čitluk":["Petar Bulić","Josip Slišković","David Ivanković","Matej Milićević","Renato Skoko","Mateo Bošnjak","Luka Ćorić","Dario Blagojević","Marko Crnjac","Filip Miličević","Luka Stojić","Marko Čović","Mate Juričić","Luka Lovrić","Sebastian Šego","Leonardo Domgjonaj","Franjo Ćorić","Petar Krasić","Borna Galić","David Crnjac","Petar Ostojić"],
+ "HNK Grude":["Ronald Bilić","Kristijan Pejić","Filip Markota","Stipe Alpeza","David Alpeza","Stjepan Mikulić","Ivan Pandžić","Luka Vlašić","Ivan Tolić","Stanko Marić","Ivan Katura","Ljubo Spajić","Luka Zucić","Toni Tomas","Stjepan Pejić","Petar Kondža","Mihael Palac","Ante Zucić"],
+ "FK Rudar 1925 Ugljevik":["Milan Trišić","Miloš Lazić","Darko Simić","Mladen Ristić","Žarko Perković","Branislav Cvijić","Ljubomir Vidaković","Goran Milovanović","Radivoje Bumbić","Igor Jelić","Željko Arsenović","Strahinja Petričević","Srđan Grujičić","David Ristić","Nemanja Cvijić"],
+ "FK Proleter Teslić":["Asim Bošnjak","Bogdan Perušinović","Saša Kuzmanović","Nemanja Đukarić","Stefan Đurić","David Simić","Želimir Nikolić","Aleksandar Sekulić","Vukota Simić","Tarik Osmić","Srđan Stanković","Srđan Radešić","Nemanja Pavlović"],
+ "FK Modriča Alfa":["Savo Sekulić","Stefan Pljevaljčić","Dragan Jolović","Milan Gerić","Nikola Mićić","Miodrag Radulović","Nebojša Prljeta","Dejan Limić","Valentin Pejić","Luka Dimitrijević","Marko Đelmaš","Nemanja Kojić","Bojan Mitrović","Bojan Lukić","Marko Vuković"]
+};
+const SOURCED_LOWER_SQUAD_SOURCES={
+ "FK Gornji Rahić":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-sjever/54212513",
+ "NK Orahovica 74":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-sjever/54212513",
+ "NK Nemila":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-centar/54227140",
+ "FK Goražde":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-centar/54227140",
+ "NK Novi Travnik":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-zapad/54223569",
+ "NK Iskra 1946 Bugojno":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-zapad/54223569",
+ "HNK Brotnjo Čitluk":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-jug/54209938",
+ "HNK Grude":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-jug/54209938",
+ "FK Rudar 1925 Ugljevik":"https://mobile.sportdc.net/vest/muskarci/178962-rudar-bolji-od-hercegovca/f",
+ "FK Proleter Teslić":"https://mobile.sportdc.net/vest/muskarci/178958-proleter-nema-namjeru-da-stane/f",
+ "FK Modriča Alfa":"https://mobile.sportdc.net/vest/muskarci/178958-proleter-nema-namjeru-da-stane/f"
+};
+const REAL_SQUAD_SOURCES={
+ "FK Hercegovac Bileća":"https://www.sofascore.com/football/team/fk-hercegovac-bileca/488722"
 };
 // Position and roster audit based on publicly listed 2026/27 squad categories.
 // Positions use the game's broad categories (GK/DEF/MID/ATT); OVR remains a game estimate.
