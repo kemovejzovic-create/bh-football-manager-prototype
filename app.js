@@ -120,8 +120,14 @@ applyLeagueMembership();
 
 function clonePlayer(p){return {...p};}
 function seedSquadForClub(club){return playersFor(club).map((p,i)=>({...p,id:`${club}::${i}`}));}
+function copiedRosterFrom(source,squad){
+ if(!Array.isArray(source)||!Array.isArray(squad)||source.length<12||squad.length<source.length)return false;
+ const names=new Set(source.map(p=>p.name));
+ const matches=squad.filter(p=>names.has(p.name)).length;
+ return matches>=Math.max(12,Math.ceil(names.size*.75));
+}
 function matchesOtherClubSquad(club,squad){
- return Object.entries(state.clubSquads||{}).some(([other,source])=>other!==club&&Array.isArray(source)&&source.length===squad.length&&squad.every((p,i)=>p.name===source[i]?.name));
+ return Object.entries(state.clubSquads||{}).some(([other,source])=>other!==club&&Array.isArray(source)&&((source.length===squad.length&&squad.every((p,i)=>p.name===source[i]?.name))||copiedRosterFrom(source,squad)));
 }
 function ensureClubSquads(){
  if(!state.clubSquads||typeof state.clubSquads!=="object")state.clubSquads={};
@@ -136,7 +142,7 @@ function ensureClubSquads(){
   const foreign=originIds.filter(origin=>origin!==c);
   if(foreign.length===squad.length&&new Set(foreign).size===1&&state.clubSquads[foreign[0]]?.length){
    const sourceIds=new Set(state.clubSquads[foreign[0]].map(p=>String(p.id)));
-   if(squad.every(p=>sourceIds.has(String(p.id)))){state.clubSquads[c]=seedSquadForClub(c);if(c===state.club)repairedCurrentSquad=true;}
+   if(squad.every(p=>sourceIds.has(String(p.id)))||copiedRosterFrom(state.clubSquads[foreign[0]],squad)){state.clubSquads[c]=seedSquadForClub(c);if(c===state.club)repairedCurrentSquad=true;}
   }
   if(matchesOtherClubSquad(c,squad)){state.clubSquads[c]=seedSquadForClub(c);if(c===state.club)repairedCurrentSquad=true;}
   if(squad.every(p=>String(p.name||"").startsWith(`${c} Player `))){state.clubSquads[c]=seedSquadForClub(c);if(c===state.club)repairedCurrentSquad=true;}
@@ -171,8 +177,8 @@ function upgradeRealSquadsV012(){
   const origins=new Set(transferred.map(p=>String(p.id||"").match(/^(.*?)::/)?.[1]).filter(Boolean));
   const origin=origins.size===1?[...origins][0]:null;
   const sourceSquad=origin&&state.clubSquads[origin];
-  const copiedRoster=own.length===0&&((!!sourceSquad&&transferred.length===sourceSquad.length&&
-   transferred.every(p=>sourceSquad.some(s=>String(s.id)===String(p.id))))||matchesOtherClubSquad(club,cur));
+  const copiedRoster=own.length===0&&((!!sourceSquad&&((transferred.length===sourceSquad.length&&
+   transferred.every(p=>sourceSquad.some(s=>String(s.id)===String(p.id))))||copiedRosterFrom(sourceSquad,transferred)))||matchesOtherClubSquad(club,cur));
   const realNames=new Set(real.map(x=>x[1]));
   const alreadyReal=own.filter(p=>realNames.has(p.name));
   if(alreadyReal.length<Math.max(1,Math.min(own.length,3)) || own.length<=11){
