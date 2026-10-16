@@ -980,9 +980,77 @@ function advanceLiveMatchEvent(){
 }
 function toggleLiveMatchPlayback(){
  const pb=state.pendingMatch?.playback;if(!pb)return;
- if(pb.paused){pb.paused=false;scheduleLiveMatchEvent();}
- else{if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}pb.paused=true;}
+ if(pb.paused){pb.paused=false;pb.tactical=false;scheduleLiveMatchEvent();}
+ else{if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}pb.paused=true;pb.tactical=true;}
  save();render();
+}
+function matchMinuteNow(pending){
+ const shown=pending.playback?.shown||[];const latest=shown.slice().reverse().find(e=>Number.isFinite(e.minute));
+ return latest?.minute??(pending.phase==="second"?46:1);
+}
+function applyMatchSubstitution(outId,inId,pending=state.pendingMatch){
+ if(!pending||!outId||!inId||String(outId)===String(inId))return false;
+ const slot=state.xi.findIndex(id=>String(id)===String(outId));
+ const incoming=state.players.find(p=>String(p.id)===String(inId));
+ if(slot<0||!incoming||state.xi.some(id=>String(id)===String(inId)))return false;
+ state.xi[slot]=incoming.id;
+ pending.substitutions=Array.isArray(pending.substitutions)?pending.substitutions:[];
+ const outgoing=state.players.find(p=>String(p.id)===String(outId));
+ pending.substitutions.push({outId:String(outId),inId:String(inId),outName:outgoing?.name||"Player",inName:incoming.name,minute:matchMinuteNow(pending)});
+ return true;
+}
+function saveLiveTacticsAndResume(){
+ const pending=state.pendingMatch,pb=pending?.playback;if(!pending||!pb)return;
+ state.mentality=document.getElementById("liveTactic")?.value||state.mentality;
+ const outId=document.getElementById("liveSubOut")?.value,inId=document.getElementById("liveSubIn")?.value;
+ if(outId&&inId)applyMatchSubstitution(decodeURIComponent(outId),decodeURIComponent(inId),pending);
+ pb.paused=false;pb.tactical=false;save();render();
+}
+function calculateMatchRatings(report,players){
+ const roster=players||[];const ratings={};
+ roster.forEach(p=>{ratings[String(p.id)]={player:p,rating:6.0};});
+ const allEvents=report.events||[];
+ allEvents.forEach(e=>{
+  if(!e.player)return;
+  const p=roster.find(x=>x.name===e.player);if(!p)return;
+  const item=ratings[String(p.id)];if(!item)return;
+  if(e.type==="goal")item.rating+=.8;
+  else if(e.type==="yellow")item.rating-=.3;
+  else if(e.type==="red")item.rating-=1.2;
+  else if(e.type==="save")item.rating+=.15;
+ });
+ [...(report.homeScorers||[]),...(report.awayScorers||[])].forEach(s=>{if(s.assist){const item=ratings[String(s.assist.id)];if(item)item.rating+=.4;}});
+ Object.values(ratings).forEach(x=>x.rating=Math.max(4,Math.min(10,Math.round(x.rating*10)/10)));
+ return ratings;
+}
+function matchTacticsPanel(p,choices={},prefix="live"){
+ const starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
+ const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId)));
+ const bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id)));
+ const tacticId=prefix==="live"?"liveTactic":"htTactic";
+ const outId=prefix==="live"?"liveSubOut":"htSubOut";
+ const inId=prefix==="live"?"liveSubIn":"htSubIn";
+ const mentality=choices.tactic||state.mentality||"Balanced";
+ return `<div class="card"><h3>${prefix==="live"?"Match tactics":"Second-half tactics"}</h3><label>Team mentality</label><select id="${tacticId}" style="width:100%;margin:6px 0 12px">${["Ultra Defensive","Defensive","Balanced","Counter-Attack","Tiki-Taka","Attacking"].map(x=>`<option ${mentality===x?"selected":""}>${x}</option>`).join("")}</select><label>Substitute (optional)</label><div class="sub">Every player currently on the bench is listed with their position.</div><select id="${outId}" style="width:100%;margin:6px 0 8px"><option value="">Player to replace</option>${starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name} • ${x.pos} • OVR ${x.ovr}</option>`).join("")}</select><select id="${inId}" style="width:100%;margin:0 0 12px"><option value="">Player to bring on</option>${bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name} • ${x.pos} • OVR ${x.ovr}</option>`).join("")}</select>${prefix==="live"?'<button class="primary" style="width:100%" onclick="saveLiveTacticsAndResume()">Apply & resume match</button>':""}</div>`;
+}
+function matchRatingsMarkup(report,players,title){
+ const ratings=calculateMatchRatings(report,players);
+ const rows=Object.values(ratings).sort((a,b)=>b.rating-a.rating);
+ return `<div class="card"><h3>${title}</h3>${rows.map(x=>`<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><span>${x.player.name}<br><span class="sub">${x.player.pos}</span></span><b>${x.rating.toFixed(1)}</b></div>`).join("")||'<div class="sub">No player ratings available.</div>'}</div>`;
+}
+function skipLiveMatch(){
+ const pending=state.pendingMatch;if(!pending)return;
+ if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}
+ if(pending.phase==="first"||pending.phase==="halftime")resumeSecondHalf();
+ if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}
+ const current=state.pendingMatch;
+ if(!current?.finalReport)return;
+ const playback=current.playback||(current.playback={segment:"second",index:0,shown:[],score:[0,0],goalOverlay:null,paused:true});
+ playback.shown=(liveMatchEvents(current)||[]).slice();
+ playback.index=liveMatchEvents(current).length;
+ playback.score=[current.finalReport.hg,current.finalReport.ag];
+ playback.goalOverlay=null;playback.paused=true;
+ completePendingMatch();
 }
 function liveEventIcon(type){return type==="goal"?"⚽":type==="yellow"?"🟨":type==="red"?"🟥":type==="save"?"🧤":type==="chance"?"🔥":type==="shot"?"🎯":type==="penalty"?"🥅":type==="half"?"⏸️":type==="full"?"🏁":"•"}
 function playMatch(){
@@ -1014,7 +1082,10 @@ function resumeSecondHalf(){
  const fixture=pending.fixture,first=pending.firstHalf;
  state.mentality=choices.tactic||"Attacking";
  let substitutionText="No substitutions at half-time.";
- if(choices.substitution&&choices.substitution!=="none"){
+ if(choices.subOut&&choices.subIn){
+   const ok=applyMatchSubstitution(choices.subOut,choices.subIn,pending);
+   if(ok)substitutionText=`${state.players.find(p=>String(p.id)===String(choices.subIn))?.name} replaces ${state.players.find(p=>String(p.id)===String(choices.subOut))?.name} at half-time.`;
+ }else if(choices.substitution&&choices.substitution!=="none"){
    normalizeXI();
    const starters=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
    const bench=state.players.filter(p=>!state.xi.includes(p.id));
@@ -1044,14 +1115,14 @@ function resumeSecondHalf(){
  report.events.sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0));
  report.stats.shotsOnTarget[0]=Math.max(report.stats.shotsOnTarget[0],finalHome);report.stats.shotsOnTarget[1]=Math.max(report.stats.shotsOnTarget[1],finalAway);
  const roundResults=pending.results;roundResults[pending.roundIndex]={home:fixture.home,away:fixture.away,hg:finalHome,ag:finalAway};
- // Track a real half-time substitution as 45 minutes for the outgoing player and 45 for the incoming player.
- const initialXI=pending.startingXI||[],finalXI=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
- const appearanceMap={};
- const userApps=[];
- initialXI.forEach(p=>{const stillOn=finalXI.some(x=>x.id===p.id);userApps.push({player:p,minutes:stillOn?90:45,starts:true});});
- finalXI.forEach(p=>{if(!initialXI.some(x=>x.id===p.id))userApps.push({player:p,minutes:45,starts:false});});
- appearanceMap[state.club]=userApps;
- report.appearances=appearanceMap;
+ const initialXI=pending.startingXI||[];
+ const subLog=(pending.substitutions||[]).slice().sort((a,b)=>a.minute-b.minute);
+ const minutesById=new Map(initialXI.map(p=>[String(p.id),{player:p,starts:true,on:0,off:90}]));
+ subLog.forEach(s=>{const out=minutesById.get(String(s.outId));if(out)out.off=Math.min(out.off,s.minute);const incoming=state.players.find(p=>String(p.id)===String(s.inId));if(incoming)minutesById.set(String(incoming.id),{player:incoming,starts:false,on:s.minute,off:90});});
+ const userApps=[...minutesById.values()].map(x=>({player:x.player,minutes:Math.max(0,x.off-x.on),starts:x.starts}));
+ report.appearances={[state.club]:userApps};
+ subLog.forEach(s=>report.events.push({minute:s.minute,type:"substitution",text:`${s.inName} replaces ${s.outName}.`,team:state.club,player:null}));
+ report.events.sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0));
  pending.secondHalf=second;pending.finalReport=report;pending.phase="second";
  pending.playback={segment:"second",index:0,shown:[],score:[first.hg,first.ag],goalOverlay:null,paused:false};
  state.pendingMatch=pending;state.lastMatch={...first,hg:first.hg,ag:first.ag,halfTime:true};
@@ -1060,6 +1131,13 @@ function resumeSecondHalf(){
 function completePendingMatch(){
  const pending=state.pendingMatch;if(!pending||!pending.finalReport)return;
  const report=pending.finalReport,fixture=pending.fixture;
+ const initialXI=pending.startingXI||[],subLog=(pending.substitutions||[]).slice().sort((a,b)=>a.minute-b.minute);
+ const minutesById=new Map(initialXI.map(p=>[String(p.id),{player:p,starts:true,on:0,off:90}]));
+ subLog.forEach(s=>{const outgoing=minutesById.get(String(s.outId));if(outgoing)outgoing.off=Math.min(outgoing.off,s.minute);const incoming=state.players.find(p=>String(p.id)===String(s.inId));if(incoming&&!minutesById.has(String(incoming.id)))minutesById.set(String(incoming.id),{player:incoming,starts:false,on:s.minute,off:90});});
+ report.appearances={[state.club]:[...minutesById.values()].map(x=>({player:x.player,minutes:Math.max(0,x.off-x.on),starts:x.starts}))};
+ report.events=report.events.filter(e=>e.type!=="substitution");
+ subLog.forEach(s=>report.events.push({minute:s.minute,type:"substitution",text:`${s.inName} replaces ${s.outName}.`,team:state.club,player:null}));
+ report.events.sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0));
  const finalHome=report.hg,finalAway=report.ag;
  if(pending.competition==="cup"){
   updatePlayerStatsFromReport(report,"cup");
@@ -1104,14 +1182,22 @@ function matchReportPage(){
    const events=(pb.shown||[]).map(e=>`<div class="live-event"><b class="live-minute">${e.minute}'</b><span class="live-icon">${liveEventIcon(e.type)}</span><span>${e.text}</span></div>`).join("");
    const segment=p.phase==="first"?"First half":"Second half";
    const matchContext=p.competition==="cup"?`Kup BiH • ${p.competitionLabel||state.cup?.roundName||"Cup tie"}`:`${state.league} • Matchday ${state.matchday+1}`;
-   document.getElementById("app").innerHTML=`${pb.goalOverlay?`<div class="goal-overlay" role="status" aria-live="assertive"><div class="goal-panel"><div class="goal-word">GOAL!</div><div class="goal-score">${pb.goalOverlay.score[0]} – ${pb.goalOverlay.score[1]}</div><div class="goal-copy">${pb.goalOverlay.team} • ${pb.goalOverlay.event.text}</div></div></div>`:""}<div class="card"><div class="sub">${matchContext} • ${segment}</div><h2 class="live-score">${p.fixture.home} <span>${pb.score?.[0]||0} – ${pb.score?.[1]||0}</span> ${p.fixture.away}</h2></div><div class="card"><div class="row"><h3>Live commentary</h3><span class="sub">Events play automatically</span></div><div id="liveEventFeed" class="live-feed" aria-live="polite">${events||'<div class="sub" style="padding:12px 0">Kick-off. The teams are settling into the match.</div>'}</div><div class="live-controls"><button onclick="toggleLiveMatchPlayback()">${pb.paused?"Resume":"Pause"}</button></div></div>`;
+   document.getElementById("app").innerHTML=`${pb.goalOverlay?`<div class="goal-overlay" role="status" aria-live="assertive"><div class="goal-panel"><div class="goal-word">GOAL!</div><div class="goal-score">${pb.goalOverlay.score[0]} – ${pb.goalOverlay.score[1]}</div><div class="goal-copy">${pb.goalOverlay.team} • ${pb.goalOverlay.event.text}</div></div></div>`:""}<div class="card"><div class="sub">${matchContext} • ${segment}</div><h2 class="live-score">${p.fixture.home} <span>${pb.score?.[0]||0} – ${pb.score?.[1]||0}</span> ${p.fixture.away}</h2></div><div class="card"><div class="row"><h3>Live commentary</h3><span class="sub">Events play automatically</span></div><div id="liveEventFeed" class="live-feed" aria-live="polite">${events||'<div class="sub" style="padding:12px 0">Kick-off. The teams are settling into the match.</div>'}</div><div class="live-controls"><button onclick="toggleLiveMatchPlayback()">${pb.paused?"Resume":"Pause for tactics"}</button><button class="danger" onclick="skipLiveMatch()">Skip match</button></div></div>`;
+   if(pb.paused&&pb.tactical)document.getElementById("app").insertAdjacentHTML("beforeend",matchTacticsPanel(p,{},"live"));
    const feed=document.getElementById("liveEventFeed");if(feed)feed.scrollTop=feed.scrollHeight;
    return;
   }
   const shown=p.playback?.shown;
   const halfEvents=(Array.isArray(shown)&&shown.length?shown:m.events).map(e=>`<div class="live-event"><b class="live-minute">${e.minute}'</b><span class="live-icon">${liveEventIcon(e.type)}</span><span>${e.text}</span></div>`).join("");
   const matchContext=p.competition==="cup"?`Kup BiH • ${p.competitionLabel||state.cup?.roundName||"Cup tie"}`:`${state.league} • Matchday ${state.matchday+1}`;
-  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${matchContext}</div><h2 style="text-align:center">HALF-TIME</h2><h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2><div class="notice">Referee: <b>${refereeSummary(m)}</b><div class="sub">The game profile affects goal rates and disciplinary decisions. It is simulated and does not describe the named official's real style.</div></div></div><div class="card"><h3>First-half commentary</h3><div class="live-feed" aria-live="polite">${halfEvents}</div></div><div class="card"><h3>Second-half tactics</h3><label>Team mentality</label><select id="htTactic" style="width:100%;margin:6px 0 12px"><option ${choices.tactic==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${choices.tactic==="Defensive"?"selected":""}>Defensive</option><option ${choices.tactic==="Balanced"?"selected":""}>Balanced</option><option ${choices.tactic==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${choices.tactic==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${choices.tactic==="Attacking"?"selected":""}>Attacking</option></select><label>Team talk</label><select id="htTalk" style="width:100%;margin:6px 0 12px"><option ${choices.talk==="Encourage"?"selected":""}>Encourage</option><option ${choices.talk==="Demand more"?"selected":""}>Demand more</option><option ${choices.talk==="Calm down"?"selected":""}>Calm down</option></select><label>Half-time substitution</label><select id="htSub" style="width:100%;margin:6px 0 12px"><option value="none" ${choices.substitution==="none"?"selected":""}>No substitution</option><option value="fresh" ${choices.substitution==="fresh"?"selected":""}>Replace lowest-rated starter with best available substitute</option><option value="attacking" ${choices.substitution==="attacking"?"selected":""}>Make an attacking change</option></select><button class="primary" style="width:100%" onclick="saveHalfTimeChoicesAndResume()">Apply changes & start second-half commentary</button><p class="sub">Your choices affect the second-half simulation. The matchday and league table are not committed until full-time.</p></div>`;return;
+  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${matchContext}</div><h2 style="text-align:center">HALF-TIME</h2><h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2><div class="notice">Referee: <b>${refereeSummary(m)}</b><div class="sub">The game profile affects goal rates and disciplinary decisions. It is simulated and does not describe the named official's real style.</div></div></div><div class="card"><h3>First-half commentary</h3><div class="live-feed" aria-live="polite">${halfEvents}</div></div><div class="card"><h3>Second-half tactics</h3><label>Team mentality</label><select id="htTactic" style="width:100%;margin:6px 0 12px"><option ${choices.tactic==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${choices.tactic==="Defensive"?"selected":""}>Defensive</option><option ${choices.tactic==="Balanced"?"selected":""}>Balanced</option><option ${choices.tactic==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${choices.tactic==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${choices.tactic==="Attacking"?"selected":""}>Attacking</option></select><label>Team talk</label><select id="htTalk" style="width:100%;margin:6px 0 12px"><option ${choices.talk==="Encourage"?"selected":""}>Encourage</option><option ${choices.talk==="Demand more"?"selected":""}>Demand more</option><option ${choices.talk==="Calm down"?"selected":""}>Calm down</option></select><label>Half-time substitution</label><select id="htSub" style="width:100%;margin:6px 0 12px"><option value="none" ${choices.substitution==="none"?"selected":""}>No substitution</option><option value="fresh" ${choices.substitution==="fresh"?"selected":""}>Replace lowest-rated starter with best available substitute</option><option value="attacking" ${choices.substitution==="attacking"?"selected":""}>Make an attacking change</option></select><button class="primary" style="width:100%" onclick="saveHalfTimeChoicesAndResume()">Apply changes & start second-half commentary</button><button class="danger" style="width:100%;margin-top:8px" onclick="skipLiveMatch()">Skip match</button><p class="sub">Your choices affect the second-half simulation. The matchday and league table are not committed until full-time.</p></div>`;
+  const halfRatingPlayers=[...(p.startingXI||[])];
+  (p.substitutions||[]).forEach(s=>{const player=state.players.find(x=>String(x.id)===String(s.inId));if(player&&!halfRatingPlayers.some(x=>String(x.id)===String(player.id)))halfRatingPlayers.push(player);});
+  document.getElementById("app").insertAdjacentHTML("beforeend",matchRatingsMarkup(m,halfRatingPlayers,"Half-time player ratings"));
+  const oldSub=document.getElementById("htSub");if(oldSub){oldSub.previousElementSibling?.remove();oldSub.remove();}
+  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId))),bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id))),starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
+  document.getElementById("app").insertAdjacentHTML("beforeend",`<div class="card"><h3>Half-time substitutions</h3><div class="sub">All available bench players and positions are shown.</div><select id="htSubOut" style="width:100%;margin:8px 0"><option value="">Player to replace</option>${starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name} • ${x.pos} • OVR ${x.ovr}</option>`).join("")}</select><select id="htSubIn" style="width:100%"><option value="">Player to bring on</option>${bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name} • ${x.pos} • OVR ${x.ovr}</option>`).join("")}</select></div>`);
+  return;
  }
  const m=state.lastMatch;
  if(!m){document.getElementById("app").innerHTML='<div class="card"><h2>Match Report</h2><div class="sub">Play a match to generate a detailed match report.</div></div>';return}
@@ -1137,18 +1223,22 @@ function matchReportPage(){
  <div class="card"><h3>Scorers</h3>
  ${[...m.homeScorers.map(x=>`<div class="row"><span>${x.minute}' ${x.player.name}</span><span>${m.home}</span></div>`),...m.awayScorers.map(x=>`<div class="row"><span>${x.minute}' ${x.player.name}</span><span>${m.away}</span></div>`)].join("")||'<div class="sub">No goals.</div>'}</div>
  <div class="card"><button class="primary" onclick="state.tab='Home';save();render()">Continue</button> <button onclick="state.tab='Results';save();render()">View results</button></div>`;
+ const ratedPlayers=(m.appearances?.[state.club]||[]).map(x=>x.player).filter(Boolean);
+ document.getElementById("app").insertAdjacentHTML("beforeend",matchRatingsMarkup(m,ratedPlayers,"Full-time player ratings"));
 }
 function saveHalfTimeChoicesAndResume(){
  if(!state.pendingMatch)return;
- state.pendingMatch.secondHalfChoices={tactic:document.getElementById("htTactic")?.value||"Attacking",talk:document.getElementById("htTalk")?.value||"Encourage",substitution:document.getElementById("htSub")?.value||"none"};
+ const outId=document.getElementById("htSubOut")?.value,inId=document.getElementById("htSubIn")?.value;
+ state.pendingMatch.secondHalfChoices={tactic:document.getElementById("htTactic")?.value||"Attacking",talk:document.getElementById("htTalk")?.value||"Encourage",subOut:outId?decodeURIComponent(outId):null,subIn:inId?decodeURIComponent(inId):null,substitution:"none"};
  save();resumeSecondHalf();
 }
 function squad(){
  if(!state.players.length)initClub(); normalizeXI();
+ const canSellPlayers=transferStatus().type!=="closed";
  let formation=formations[state.formation],mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||null}));
  const bench=state.players.filter(p=>!state.xi.includes(p.id));
  const sourceLabel=p=>p.rosterSource==="match-sheet"?"Match sheet":p.rosterSource==="public-roster"?"Public roster":p.rosterSource==="generated"?"Generated depth":p.rosterSource==="regional-market"?`${p.nationality||"Regional"} market`:"Seeded roster";
- const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>`<div class="player ${showSell?"":"tactic-bench-player"}" ${showSell?"":`draggable="true" onclick="selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}><span class="tactic-name ${String(selectedTacticPlayerId)===String(p.id)?"selected":""}" ${showSell?"":`onclick="event.stopPropagation();selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs • ${sourceLabel(p)}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11?"disabled":""}>Sell</button>`:""}</div>`).join("")}</div>`;
+ const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>`<div class="player ${showSell?"":"tactic-bench-player"}" ${showSell?"":`draggable="true" onclick="selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}><span class="tactic-name ${String(selectedTacticPlayerId)===String(p.id)?"selected":""}" ${showSell?"":`onclick="event.stopPropagation();selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs • ${sourceLabel(p)}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11||!canSellPlayers?"disabled":""}>Sell</button>`:""}</div>`).join("")}</div>`;
  document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div><div class="sub tactic-hint">Tap one player's name, then another to swap them. You can also drag a player onto a position.</div></div><div class="pitch" ondragover="allowTacticDrop(event)">${mapped.map((m,i)=>`<div class="mark tactic-mark ${m.p&&String(selectedTacticPlayerId)===String(m.p.id)?"selected":""}" style="left:${m.slot[1]}%;top:${m.slot[2]}%" tabindex="0" role="button" aria-label="${m.slot[0]}: ${m.p?m.p.name:"Empty"}" onclick="selectTacticSlot(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectTacticSlot(${i})}" ondragover="allowTacticDrop(event)" ondrop="dropTacticPlayer(event,${i})" ${m.p?`draggable="true" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(m.p.id))}'))"`:""}><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><button class="primary" onclick="autoPickXI()">Auto-pick</button><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.pos} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
 function selectTacticPlayer(id){
  id=String(id);if(!state.players.some(p=>String(p.id)===id))return;
@@ -1337,6 +1427,8 @@ function buyPlayerById(id){
 function buyPlayer(i){const st=transferStatus();if(st.type==="closed")return;ensureTransferPool();const p=state.transferPool.filter(x=>x.club!==state.club)[i];if(p)buyPlayerById(p.id)}
 
 function sellPlayer(id){
+ const windowStatus=transferStatus();
+ if(windowStatus.type==="closed")return;
  if(state.players.length<=11)return;
  const p=state.players.find(x=>String(x.id)===String(id)); if(!p)return;
  const fee=Math.round(playerValue(p)*0.55);
