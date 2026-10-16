@@ -1029,11 +1029,18 @@ function matchTacticsPanel(p,choices={},prefix="live"){
  const starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId)));
  const bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id)));
+ const booked=bookedPlayersForPendingMatch(p);
  const tacticId=prefix==="live"?"liveTactic":"htTactic";
  const outId=prefix==="live"?"liveSubOut":"htSubOut";
  const inId=prefix==="live"?"liveSubIn":"htSubIn";
  const mentality=choices.tactic||state.mentality||"Balanced";
- return `<div class="card"><h3>${prefix==="live"?"Match tactics":"Second-half tactics"}</h3><label>Team mentality</label><select id="${tacticId}" style="width:100%;margin:6px 0 12px">${["Ultra Defensive","Defensive","Balanced","Counter-Attack","Tiki-Taka","Attacking"].map(x=>`<option ${mentality===x?"selected":""}>${x}</option>`).join("")}</select><label>Substitute (optional)</label><div class="sub">Every player currently on the bench is listed with their position.</div><select id="${outId}" style="width:100%;margin:6px 0 8px"><option value="">Player to replace</option>${starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name} • ${x.pos} • OVR ${x.ovr}</option>`).join("")}</select><select id="${inId}" style="width:100%;margin:0 0 12px"><option value="">Player to bring on</option>${bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name} • ${x.pos} • OVR ${x.ovr}</option>`).join("")}</select>${prefix==="live"?'<button class="primary" style="width:100%" onclick="saveLiveTacticsAndResume()">Apply & resume match</button>':""}</div>`;
+ return `<div class="card"><h3>${prefix==="live"?"Match tactics":"Second-half tactics"}</h3><label>Team mentality</label><select id="${tacticId}" style="width:100%;margin:6px 0 12px">${["Ultra Defensive","Defensive","Balanced","Counter-Attack","Tiki-Taka","Attacking"].map(x=>`<option ${mentality===x?"selected":""}>${x}</option>`).join("")}</select><label>Substitute (optional)</label><div class="sub">Every player currently on the bench is listed with their position.</div><select id="${outId}" style="width:100%;margin:6px 0 8px"><option value="">Player to replace</option>${starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select><select id="${inId}" style="width:100%;margin:0 0 12px"><option value="">Player to bring on</option>${bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select>${prefix==="live"?'<button class="primary" style="width:100%" onclick="saveLiveTacticsAndResume()">Apply & resume match</button>':""}</div>`;
+}
+function bookedPlayersForPendingMatch(p){
+ if(!p)return new Set();
+ const events=p.phase==="first"?(p.playback?.shown||[]):[...(p.firstHalf?.events||[]),...(p.phase==="halftime"?[]:(p.playback?.shown||[]))];
+ const club=p.fixture?.home===state.club||p.fixture?.away===state.club?state.club:null;
+ return new Set(events.filter(e=>e.type==="yellow"&&e.team===club&&e.player).map(e=>e.player));
 }
 function matchRatingsMarkup(report,players,title){
  const ratings=calculateMatchRatings(report,players);
@@ -1203,7 +1210,8 @@ function matchReportPage(){
   document.getElementById("app").insertAdjacentHTML("beforeend",matchRatingsMarkup(m,halfRatingPlayers,"Half-time player ratings"));
   const oldSub=document.getElementById("htSub");if(oldSub){oldSub.previousElementSibling?.remove();oldSub.remove();}
   const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId))),bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id))),starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
-  document.getElementById("app").insertAdjacentHTML("beforeend",`<div class="card"><h3>Half-time substitutions</h3><div class="sub">All available bench players and positions are shown.</div><select id="htSubOut" style="width:100%;margin:8px 0"><option value="">Player to replace</option>${starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name} • ${x.pos} • OVR ${x.ovr}</option>`).join("")}</select><select id="htSubIn" style="width:100%"><option value="">Player to bring on</option>${bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name} • ${x.pos} • OVR ${x.ovr}</option>`).join("")}</select></div>`);
+  const booked=bookedPlayersForPendingMatch(p);
+  document.getElementById("app").insertAdjacentHTML("beforeend",`<div class="card"><h3>Half-time substitutions</h3><div class="sub">All available bench players and positions are shown.</div><select id="htSubOut" style="width:100%;margin:8px 0"><option value="">Player to replace</option>${starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select><select id="htSubIn" style="width:100%"><option value="">Player to bring on</option>${bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select></div>`);
   return;
  }
  const m=state.lastMatch;
