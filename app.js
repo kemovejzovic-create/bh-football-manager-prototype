@@ -86,6 +86,15 @@ function normalizeSavedState(raw){
  if(!["league","cup","all"].includes(merged.statsCompetition))merged.statsCompetition="league";
  if(!isObject(merged.seasonReport)&&merged.seasonReport!==null)merged.seasonReport=null;
  if(!isObject(merged.pendingMatch))merged.pendingMatch=null;
+ else{
+  const pending=merged.pendingMatch;if(!Array.isArray(pending.dismissals))pending.dismissals=[];pending.dismissals=pending.dismissals.filter(d=>isObject(d)&&typeof d.team==="string"&&d.id!=null&&typeof d.name==="string");
+  const shownNow=Array.isArray(pending.playback?.shown)?pending.playback.shown:[],firstEvents=Array.isArray(pending.firstHalf?.events)?pending.firstHalf.events:[],startingXI=Array.isArray(pending.startingXI)?pending.startingXI:[];
+  const shown=pending.phase==="first"?shownNow:[...firstEvents,...(pending.phase==="halftime"?[]:shownNow)];
+  shown.filter(e=>e.type==="red"&&e.team===merged.club&&e.player).forEach(event=>{
+   const player=startingXI.find(p=>p.name===event.player)||merged.players.find(p=>p.name===event.player);
+   if(player&&!pending.dismissals.some(d=>d.team===merged.club&&String(d.id)===String(player.id)))pending.dismissals.push({team:merged.club,id:String(player.id),name:player.name,minute:event.minute});
+  });
+ }
  if(!isObject(merged.celebration))merged.celebration=null;
  // The previous save schema persisted placeholder divisions as league members.
  // Drop that cache and stale round snapshots when switching to sourced 2026/27 lists.
@@ -643,9 +652,11 @@ function save(){
  }
 }
 function normalizeXI(){
- const valid=state.players.map(p=>p.id), seen=new Set(), out=[];
+ const dismissed=new Set((state.pendingMatch?.dismissals||[]).filter(d=>d&&d.team===state.club&&d.id!=null).map(d=>String(d.id)));
+ const valid=state.players.filter(p=>!dismissed.has(String(p.id))).map(p=>p.id), seen=new Set(), out=[];
+ const targetCount=Math.min(Math.max(0,11-dismissed.size),valid.length);
  (Array.isArray(state.xi)?state.xi:[]).forEach(id=>{if(valid.includes(id)&&!seen.has(id)){seen.add(id);out.push(id)}});
- valid.forEach(id=>{if(out.length<Math.min(11,valid.length)&&!seen.has(id)){seen.add(id);out.push(id)}});
+ valid.forEach(id=>{if(out.length<targetCount&&!seen.has(id)){seen.add(id);out.push(id)}});
  state.xi=out;
 }
 function autoPickXI(){
@@ -834,10 +845,9 @@ function generateMatchReport(r,referee=assignReferee()){
 
  // 2–5 cards, weighted toward midfield/defenders.
  const cardCount=Math.max(0,Math.min(6,Math.floor(Math.random()*4)+referee.strictness));
- const allPlayers=[...homeXI,...awayXI];
  for(let i=0;i<cardCount;i++){
-   const p=pickPlayer(allPlayers,{ATT:.7,MID:2.2,DEF:2.8,GK:.5}); if(!p)continue;
-   const team=homeXI.some(x=>x.id===p.id)?r.home:r.away;
+	  const team=Math.random()<.5?r.home:r.away;
+	  const p=pickPlayer(team===r.home?homeXI:awayXI,{ATT:.7,MID:2.2,DEF:2.8,GK:.5}); if(!p)continue;
    const minute=matchMinute(usedMinutes);usedMinutes.push(minute);
    const straightRed=Math.random()<(.035+Math.max(0,referee.strictness)*.035);
    add(minute,straightRed?"red":"yellow",
@@ -887,6 +897,64 @@ function generateMatchReport(r,referee=assignReferee()){
      corners:[Math.floor(Math.random()*8),Math.floor(Math.random()*8)]
    }
  };
+}
+function resolveDisciplineEvents(report,previousEvents=[]){
+ const yellows=new Map(),dismissed=new Set(),redsByTeam=new Map();
+ const keyFor=e=>`${e.team}::${e.player}`;
+ const countRed=e=>{const count=(redsByTeam.get(e.team)||0)+1;redsByTeam.set(e.team,count);return count};
+ [...previousEvents].sort((a,b)=>a.minute-b.minute).forEach(e=>{
+  if(!e.team||!e.player)return;const key=keyFor(e);
+  if(e.type==="yellow")yellows.set(key,(yellows.get(key)||0)+1);
+  if(e.type==="red"){dismissed.add(key);countRed(e)}
+ });
+ const events=[];let forfeit=null;
+ for(const event of [...report.events].sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0))){
+  if(forfeit)break;
+  if(!event.team||!event.player||!(["yellow","red"].includes(event.type))){events.push(event);continue;}
+  const key=keyFor(event);if(dismissed.has(key))continue;
+  events.push(event);
+  if(event.type==="yellow"){
+   const count=(yellows.get(key)||0)+1;yellows.set(key,count);
+   if(count===2){
+    const dismissal={minute:event.minute,type:"red",text:`${event.player} is sent off after a second booking.`,team:event.team,player:event.player,secondYellow:true};
+    events.push(dismissal);dismissed.add(key);
+    if(countRed(dismissal)>=5)forfeit={loser:event.team,minute:event.minute};
+   }
+  }else{
+   dismissed.add(key);
+   if(countRed(event)>=5)forfeit={loser:event.team,minute:event.minute};
+  }
+ }
+ if(forfeit){
+  const winner=forfeit.loser===report.home?report.away:report.home;
+  report.forfeitLoser=forfeit.loser;report.forfeitWinner=winner;report.forfeitMinute=forfeit.minute;
+  report.hg=winner===report.home?3:0;report.ag=winner===report.away?3:0;
+  report.homeScorers=[];report.awayScorers=[];
+  report.events=events.filter(e=>e.type!=="half"&&e.type!=="full");
+  report.events.push({minute:forfeit.minute,type:"full",text:`Match ended after ${forfeit.loser} received a fifth red card. ${winner} are awarded a 3–0 win.`,team:null,player:null,forfeit:true});
+ }else report.events=events;
+ report.events.sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0));
+ return report;
+}
+function dismissPlayerForMatch(pending,event){
+ if(!pending||event?.type!=="red"||!event.team||!event.player)return;
+ pending.dismissals=Array.isArray(pending.dismissals)?pending.dismissals:[];
+ if(pending.dismissals.some(d=>d.team===event.team&&d.name===event.player))return;
+ const roster=event.team===state.club?[...(pending.startingXI||[]),...(state.players||[])]:state.clubSquads[event.team]||[];
+ const player=roster.find(p=>p.name===event.player);if(!player)return;
+ pending.dismissals.push({team:event.team,id:String(player.id),name:player.name,minute:event.minute});
+ if(event.team===state.club)state.xi=state.xi.filter(id=>String(id)!==String(player.id));
+}
+function processShownDismissals(pending,events){(events||[]).filter(e=>e.type==="red").forEach(e=>dismissPlayerForMatch(pending,e));}
+function completeFirstHalfForfeit(pending){
+ if(!pending?.firstHalf?.forfeitLoser)return;
+ processShownDismissals(pending,pending.firstHalf.events);
+ const report={...pending.firstHalf,competition:pending.competition||"league",competitionLabel:pending.competitionLabel||null};
+ const dismissed=new Map((pending.dismissals||[]).filter(d=>d.team===state.club).map(d=>[String(d.id),d.minute]));
+ report.appearances={[state.club]:(pending.startingXI||[]).map(player=>({player,minutes:Math.max(0,Math.min(report.forfeitMinute||45,dismissed.get(String(player.id))??(report.forfeitMinute||45))),starts:true}))};
+ pending.finalReport=report;pending.phase="second";pending.forfeitLoser=report.forfeitLoser;
+ pending.playback={segment:"second",index:0,shown:[],score:[report.hg,report.ag],goalOverlay:null,paused:true};
+ completePendingMatch();
 }
 function updatePlayerStatsFromReport(report,competition="league"){
  const sides=[[report.home,lineupForStats(report.home),report.homeScorers,report.ag],[report.away,lineupForStats(report.away),report.awayScorers,report.hg]];
@@ -951,12 +1019,14 @@ function remapMatchSegment(report,startMinute,endMinute,markerType){
  return report;
 }
 function combineMatchSegments(first,second,finalHome,finalAway){
- const events=[...first.events.filter(e=>e.type!=="half"&&e.type!=="full"),...second.events.filter(e=>e.type!=="half"&&e.type!=="full")];
- events.push({minute:45,type:"half",text:"Half-time: tactical changes applied.",team:null,player:null},{minute:90,type:"full",text:`Full-time: ${first.home} ${finalHome}–${finalAway} ${first.away}.`,team:null,player:null});
+ const forfeitLoser=second.forfeitLoser||first.forfeitLoser;
+ const events=[...first.events.filter(e=>e.type!=="half"&&e.type!=="full"),...second.events.filter(e=>e.type!=="half"&&(e.type!=="full"||e.forfeit))];
+ events.push({minute:45,type:"half",text:"Half-time: tactical changes applied.",team:null,player:null});
+ if(!forfeitLoser)events.push({minute:90,type:"full",text:`Full-time: ${first.home} ${finalHome}–${finalAway} ${first.away}.`,team:null,player:null});
  events.sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0));
  const addPair=(a,b)=>[a[0]+b[0],a[1]+b[1]];
  const possession=[Math.round((first.stats.possession[0]+second.stats.possession[0])/2),0];possession[1]=100-possession[0];
- return {...first,hg:finalHome,ag:finalAway,events,homeScorers:[...first.homeScorers,...second.homeScorers],awayScorers:[...first.awayScorers,...second.awayScorers],stats:{possession,shots:addPair(first.stats.shots,second.stats.shots),shotsOnTarget:addPair(first.stats.shotsOnTarget,second.stats.shotsOnTarget),corners:addPair(first.stats.corners,second.stats.corners)}};
+ return {...first,hg:finalHome,ag:finalAway,events,forfeitLoser,forfeitWinner:second.forfeitWinner||first.forfeitWinner,forfeitMinute:second.forfeitMinute||first.forfeitMinute,homeScorers:forfeitLoser?[]:[...first.homeScorers,...second.homeScorers],awayScorers:forfeitLoser?[]:[...first.awayScorers,...second.awayScorers],stats:{possession,shots:addPair(first.stats.shots,second.stats.shots),shotsOnTarget:addPair(first.stats.shotsOnTarget,second.stats.shotsOnTarget),corners:addPair(first.stats.corners,second.stats.corners)}};
 }
 function liveMatchEvents(pending){return pending.phase==="first"?pending.firstHalf?.events||[]:pending.secondHalf?.events||[]}
 function scheduleLiveMatchEvent(){
@@ -978,6 +1048,8 @@ function advanceLiveMatchEvent(){
   pb.goalOverlay={event,team:event.team,score:pb.score.slice()};
  }
  if(event.type==="half"){pending.phase="halftime";pb.paused=true;}
+ if(event.type==="red")dismissPlayerForMatch(pending,event);
+ if(event.type==="full"&&pending.forfeitLoser){pb.score=[pending.finalReport?.hg??pending.firstHalf.hg,pending.finalReport?.ag??pending.firstHalf.ag];if(pending.phase==="first")completeFirstHalfForfeit(pending);else completePendingMatch();return;}
  save();render();
 }
 function toggleLiveMatchPlayback(){
@@ -994,7 +1066,7 @@ function applyMatchSubstitution(outId,inId,pending=state.pendingMatch){
  if(!pending||!outId||!inId||String(outId)===String(inId))return false;
  const slot=state.xi.findIndex(id=>String(id)===String(outId));
  const incoming=state.players.find(p=>String(p.id)===String(inId));
- if(slot<0||!incoming||state.xi.some(id=>String(id)===String(inId)))return false;
+ if(slot<0||!incoming||state.xi.some(id=>String(id)===String(inId))||(pending.dismissals||[]).some(d=>d.team===state.club&&String(d.id)===String(inId)))return false;
  state.xi[slot]=incoming.id;
  pending.substitutions=Array.isArray(pending.substitutions)?pending.substitutions:[];
  const outgoing=state.players.find(p=>String(p.id)===String(outId));
@@ -1028,6 +1100,7 @@ function calculateMatchRatings(report,players){
 function matchTacticsPanel(p,choices={},prefix="live"){
  const starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId)));
+ (p.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>unavailable.add(String(d.id)));
  const bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id)));
  const booked=bookedPlayersForPendingMatch(p);
  const tacticId=prefix==="live"?"liveTactic":"htTactic";
@@ -1050,12 +1123,15 @@ function matchRatingsMarkup(report,players,title){
 function skipLiveMatch(){
  const pending=state.pendingMatch;if(!pending)return;
  if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}
+ if(pending.phase==="first")processShownDismissals(pending,pending.firstHalf?.events);
+ if(pending.phase==="first"&&pending.firstHalf?.forfeitLoser){completeFirstHalfForfeit(pending);return;}
  if(pending.phase==="first"||pending.phase==="halftime")resumeSecondHalf();
  if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}
  const current=state.pendingMatch;
  if(!current?.finalReport)return;
  const playback=current.playback||(current.playback={segment:"second",index:0,shown:[],score:[0,0],goalOverlay:null,paused:true});
  playback.shown=(liveMatchEvents(current)||[]).slice();
+ processShownDismissals(current,playback.shown);
  playback.index=liveMatchEvents(current).length;
  playback.score=[current.finalReport.hg,current.finalReport.ag];
  playback.goalOverlay=null;playback.paused=true;
@@ -1084,14 +1160,16 @@ function playMatch(){
  const homeIsUser=my.home===state.club,homeTactic=homeIsUser?tacticGoalMultiplier(state.mentality):1,awayTactic=!homeIsUser?tacticGoalMultiplier(state.mentality):1;
  const homeFirst=Math.min(poissonish(xg.home*.46*(homeIsUser?squadFactor:1)*homeTactic),4),awayFirst=Math.min(poissonish(xg.away*.46*(!homeIsUser?squadFactor:1)*awayTactic),4);
  const firstRaw=generateMatchReport({home:my.home,away:my.away,hg:homeFirst,ag:awayFirst},referee);
- const first=remapMatchSegment(firstRaw,1,45,"half");
+ const first=resolveDisciplineEvents(remapMatchSegment(firstRaw,1,45,"half"));
  results[idx]={home:my.home,away:my.away,hg:homeFirst,ag:awayFirst};
- state.pendingMatch={results,roundIndex:idx,fixture:{...my},firstHalf:first,referee,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
+ state.pendingMatch={results,roundIndex:idx,fixture:{...my},firstHalf:first,forfeitLoser:first.forfeitLoser||null,dismissals:[],referee,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
  state.lastMatch={...first,hg:homeFirst,ag:awayFirst,halfTime:true};
  state.tab="Match Report";save();render();
 }
 function resumeSecondHalf(){
  const pending=state.pendingMatch;if(!pending)return;
+ if(pending.firstHalf?.forfeitLoser){completeFirstHalfForfeit(pending);return;}
+ processShownDismissals(pending,pending.firstHalf?.events);
  const choices=pending.secondHalfChoices||{tactic:"Attacking",talk:"Encourage",substitution:"none"};
  const fixture=pending.fixture,first=pending.firstHalf;
  state.mentality=choices.tactic||"Attacking";
@@ -1102,7 +1180,8 @@ function resumeSecondHalf(){
  }else if(choices.substitution&&choices.substitution!=="none"){
    normalizeXI();
    const starters=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
-   const bench=state.players.filter(p=>!state.xi.includes(p.id));
+   const dismissed=new Set((pending.dismissals||[]).filter(d=>d.team===state.club).map(d=>String(d.id)));
+   const bench=state.players.filter(p=>!state.xi.includes(p.id)&&!dismissed.has(String(p.id)));
    let outgoing=null;
    if(choices.substitution==="attacking")outgoing=starters.filter(p=>p.pos==="DEF"||p.pos==="MID").sort((a,b)=>a.ovr-b.ovr)[0]||starters.sort((a,b)=>a.ovr-b.ovr)[0];
    else outgoing=starters.slice().sort((a,b)=>a.ovr-b.ovr)[0];
@@ -1118,11 +1197,15 @@ function resumeSecondHalf(){
  const talkFactor=choices.talk==="Encourage"?1.045:choices.talk==="Demand more"?1.035:choices.talk==="Calm down"?.99:1;
  const subFactor=substitutionText.includes("replaces")?1.025:1;
  const homeIsUser=fixture.home===state.club;
- const homeSecond=Math.min(poissonish(xg.home*.54*(homeIsUser?squadFactor*tacticFactor*talkFactor*subFactor:1)),4);
- const awaySecond=Math.min(poissonish(xg.away*.54*(!homeIsUser?squadFactor*tacticFactor*talkFactor*subFactor:1)),4);
+ const firstHalfReds=pending.firstHalf.events.filter(e=>e.type==="red"),redsFor=team=>firstHalfReds.filter(e=>e.team===team).length;
+ const homeManpower=Math.pow(.88,redsFor(fixture.home))*Math.pow(1.12,redsFor(fixture.away));
+ const awayManpower=Math.pow(.88,redsFor(fixture.away))*Math.pow(1.12,redsFor(fixture.home));
+ const homeSecond=Math.min(poissonish(xg.home*.54*(homeIsUser?squadFactor*tacticFactor*talkFactor*subFactor:1)*homeManpower),4);
+ const awaySecond=Math.min(poissonish(xg.away*.54*(!homeIsUser?squadFactor*tacticFactor*talkFactor*subFactor:1)*awayManpower),4);
  const secondRaw=generateMatchReport({home:fixture.home,away:fixture.away,hg:homeSecond,ag:awaySecond},referee);
- const second=remapMatchSegment(secondRaw,46,90,"full");
- const finalHome=first.hg+homeSecond,finalAway=first.ag+awaySecond;
+ const second=resolveDisciplineEvents(remapMatchSegment(secondRaw,46,90,"full"),first.events);
+ const forfeitingTeam=second.forfeitLoser||null;
+ const finalHome=forfeitingTeam?second.hg:first.hg+homeSecond,finalAway=forfeitingTeam?second.ag:first.ag+awaySecond;
  const report=combineMatchSegments(first,second,finalHome,finalAway);
  report.competition=pending.competition||"league";report.competitionLabel=pending.competitionLabel||null;
  report.events.push({minute:46,type:"tactic",text:`Second-half plan: ${state.mentality}. Team talk: ${choices.talk}. ${substitutionText}`,team:state.club,player:null});
@@ -1133,11 +1216,12 @@ function resumeSecondHalf(){
  const subLog=(pending.substitutions||[]).slice().sort((a,b)=>a.minute-b.minute);
  const minutesById=new Map(initialXI.map(p=>[String(p.id),{player:p,starts:true,on:0,off:90}]));
  subLog.forEach(s=>{const out=minutesById.get(String(s.outId));if(out)out.off=Math.min(out.off,s.minute);const incoming=state.players.find(p=>String(p.id)===String(s.inId));if(incoming)minutesById.set(String(incoming.id),{player:incoming,starts:false,on:s.minute,off:90});});
+ (pending.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>{const entry=minutesById.get(String(d.id));if(entry)entry.off=Math.min(entry.off,d.minute);});
  const userApps=[...minutesById.values()].map(x=>({player:x.player,minutes:Math.max(0,x.off-x.on),starts:x.starts}));
  report.appearances={[state.club]:userApps};
  subLog.forEach(s=>report.events.push({minute:s.minute,type:"substitution",text:`${s.inName} replaces ${s.outName}.`,team:state.club,player:null}));
  report.events.sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0));
- pending.secondHalf=second;pending.finalReport=report;pending.phase="second";
+ pending.secondHalf=second;pending.finalReport=report;pending.phase="second";pending.forfeitLoser=forfeitingTeam;
  pending.playback={segment:"second",index:0,shown:[],score:[first.hg,first.ag],goalOverlay:null,paused:false};
  state.pendingMatch=pending;state.lastMatch={...first,hg:first.hg,ag:first.ag,halfTime:true};
  state.tab="Match Report";save();render();
@@ -1146,13 +1230,16 @@ function completePendingMatch(){
  const pending=state.pendingMatch;if(!pending||!pending.finalReport)return;
  const report=pending.finalReport,fixture=pending.fixture;
  const initialXI=pending.startingXI||[],subLog=(pending.substitutions||[]).slice().sort((a,b)=>a.minute-b.minute);
- const minutesById=new Map(initialXI.map(p=>[String(p.id),{player:p,starts:true,on:0,off:90}]));
- subLog.forEach(s=>{const outgoing=minutesById.get(String(s.outId));if(outgoing)outgoing.off=Math.min(outgoing.off,s.minute);const incoming=state.players.find(p=>String(p.id)===String(s.inId));if(incoming&&!minutesById.has(String(incoming.id)))minutesById.set(String(incoming.id),{player:incoming,starts:false,on:s.minute,off:90});});
+ const endMinute=Number.isFinite(report.forfeitMinute)?report.forfeitMinute:90;
+ const minutesById=new Map(initialXI.map(p=>[String(p.id),{player:p,starts:true,on:0,off:endMinute}]));
+ subLog.forEach(s=>{const outgoing=minutesById.get(String(s.outId));if(outgoing)outgoing.off=Math.min(outgoing.off,s.minute);const incoming=state.players.find(p=>String(p.id)===String(s.inId));if(incoming&&!minutesById.has(String(incoming.id)))minutesById.set(String(incoming.id),{player:incoming,starts:false,on:s.minute,off:endMinute});});
+ (pending.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>{const entry=minutesById.get(String(d.id));if(entry)entry.off=Math.min(entry.off,d.minute);});
  report.appearances={[state.club]:[...minutesById.values()].map(x=>({player:x.player,minutes:Math.max(0,x.off-x.on),starts:x.starts}))};
  report.events=report.events.filter(e=>e.type!=="substitution");
  subLog.forEach(s=>report.events.push({minute:s.minute,type:"substitution",text:`${s.inName} replaces ${s.outName}.`,team:state.club,player:null}));
  report.events.sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0));
  const finalHome=report.hg,finalAway=report.ag;
+ pending.results[pending.roundIndex]={home:fixture.home,away:fixture.away,hg:finalHome,ag:finalAway,referee:report.referee,refereeProfile:report.refereeProfile};
  if(pending.competition==="cup"){
   updatePlayerStatsFromReport(report,"cup");
   const games=pending.results;games[pending.roundIndex]={...fixture,hg:finalHome,ag:finalAway,referee:report.referee,refereeProfile:report.refereeProfile};
@@ -1209,7 +1296,7 @@ function matchReportPage(){
   (p.substitutions||[]).forEach(s=>{const player=state.players.find(x=>String(x.id)===String(s.inId));if(player&&!halfRatingPlayers.some(x=>String(x.id)===String(player.id)))halfRatingPlayers.push(player);});
   document.getElementById("app").insertAdjacentHTML("beforeend",matchRatingsMarkup(m,halfRatingPlayers,"Half-time player ratings"));
   const oldSub=document.getElementById("htSub");if(oldSub){oldSub.previousElementSibling?.remove();oldSub.remove();}
-  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId))),bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id))),starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
+  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId)));(p.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>unavailable.add(String(d.id)));const bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id))),starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
   const booked=bookedPlayersForPendingMatch(p);
   document.getElementById("app").insertAdjacentHTML("beforeend",`<div class="card"><h3>Half-time substitutions</h3><div class="sub">All available bench players and positions are shown.</div><select id="htSubOut" style="width:100%;margin:8px 0"><option value="">Player to replace</option>${starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select><select id="htSubIn" style="width:100%"><option value="">Player to bring on</option>${bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select></div>`);
   return;
@@ -1342,10 +1429,10 @@ function playCup(){
  const squadFactor=Math.max(.9,Math.min(1.1,1+(state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).reduce((sum,p,_,arr)=>sum+p.ovr/Math.max(1,arr.length),0)-teamRating(state.club))*.012));
  const homeTactic=homeIsUser?tacticGoalMultiplier(state.mentality):1,awayTactic=!homeIsUser?tacticGoalMultiplier(state.mentality):1;
  const firstHome=Math.min(poissonish(xg.home*.46*(homeIsUser?squadFactor:1)*homeTactic),4),firstAway=Math.min(poissonish(xg.away*.46*(!homeIsUser?squadFactor:1)*awayTactic),4);
- const first=remapMatchSegment(generateMatchReport({home:fixture.home,away:fixture.away,hg:firstHome,ag:firstAway},referee),1,45,"half");
+ const first=resolveDisciplineEvents(remapMatchSegment(generateMatchReport({home:fixture.home,away:fixture.away,hg:firstHome,ag:firstAway},referee),1,45,"half"));
  const games=state.cup.pending.map(game=>game.home===fixture.home&&game.away===fixture.away?{...game,hg:firstHome,ag:firstAway,referee:referee.name,refereeProfile:referee.id}:simulateCupGame(game));
  const roundIndex=games.findIndex(game=>game.home===fixture.home&&game.away===fixture.away);
- state.pendingMatch={competition:"cup",competitionLabel:state.cup.roundName,results:games,roundIndex,fixture:{...fixture},firstHalf:first,referee,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
+ state.pendingMatch={competition:"cup",competitionLabel:state.cup.roundName,results:games,roundIndex,fixture:{...fixture},firstHalf:first,forfeitLoser:first.forfeitLoser||null,dismissals:[],referee,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
  state.lastMatch={...first,competition:"cup",competitionLabel:state.cup.roundName,hg:firstHome,ag:firstAway,halfTime:true};state.tab="Match Report";save();render();
 }
 function cup(){
