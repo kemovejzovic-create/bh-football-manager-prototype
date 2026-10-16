@@ -25,6 +25,7 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 .pitch:after{content:"";position:absolute;left:20%;right:20%;top:50%;border-top:2px solid rgba(255,255,255,.7)}
 .mark{position:absolute;transform:translate(-50%,-50%);text-align:center}.shirt{width:34px;height:34px;border-radius:50%;background:#f8fafc;color:#111827;display:grid;place-items:center;font-size:11px;font-weight:800;border:2px solid #111827}
 .small{font-size:11px;color:#fff;background:rgba(0,0,0,.55);padding:2px 5px;border-radius:5px;margin-top:2px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tactic-mark{cursor:grab;touch-action:manipulation;user-select:none}.tactic-mark:active{cursor:grabbing}.tactic-mark.selected .shirt{outline:3px solid #facc15;outline-offset:2px}.tactic-mark.drop-target{filter:drop-shadow(0 0 7px #facc15)}.tactic-name{cursor:pointer}.tactic-name.selected{color:#facc15;font-weight:800}.tactic-bench-player{cursor:grab;touch-action:manipulation}.tactic-bench-player.selected{color:#facc15;font-weight:800}.tactic-hint{margin:8px 0 12px}
 .notice{padding:10px;border-radius:10px;background:#111827;color:#cbd5e1;font-size:12px}.green{color:var(--accent)}.red{color:var(--danger)}
 .live-feed{max-height:340px;overflow:auto;scroll-behavior:smooth}.live-event{display:grid;grid-template-columns:48px 28px 1fr;gap:8px;align-items:start;padding:10px 2px;border-bottom:1px solid var(--line);animation:event-in .28s ease-out}.live-event:last-child{border-bottom:0}.live-minute{color:var(--accent);font-weight:800}.live-icon{font-size:18px;text-align:center}.live-score{font-size:30px;font-weight:800;text-align:center;margin:10px 0}.live-controls{display:flex;gap:8px}.live-controls button{flex:1}@keyframes event-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .goal-overlay{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:20px;background:rgba(3,8,12,.66);pointer-events:none;animation:goal-in .2s ease-out}.goal-panel{width:min(480px,100%);padding:26px 20px;text-align:center;border:2px solid #86efac;border-radius:18px;background:linear-gradient(145deg,#166534,#14532d);box-shadow:0 20px 70px #0009}.goal-word{font-size:clamp(42px,12vw,76px);font-weight:1000;line-height:1;color:#f0fdf4;letter-spacing:.05em;text-shadow:0 3px 0 #14532d}.goal-score{font-size:36px;font-weight:900;margin:12px 0}.goal-copy{font-size:15px;color:#dcfce7}.all-league summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px}.all-league summary::-webkit-details-marker{display:none}.all-league summary:after{content:"＋";font-size:20px;color:var(--accent)}.all-league[open] summary{margin-bottom:12px}.all-league[open] summary:after{content:"−"}@keyframes goal-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
@@ -34,10 +35,10 @@ button{cursor:pointer}button.primary{background:#166534;border-color:#15803d}but
 </head>
 <body>
 <div class="app">
-<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.27 Scheduled Cup & Ticket Sales</div></div><button onclick="resetGame()">Reset</button></div></div>
+<div class="top"><div class="row"><div><h1>BH Football Manager Lite</h1><div class="sub">2026/27 • Local Career • v0.29 Regional Transfers</div></div><button onclick="resetGame()">Reset</button></div></div>
 <div id="tabs" class="tabs"></div><main id="app" class="screen"></main>
 <div class="footer">Local save • No account • No server required</div>
 </div>
-<script src="data.js?v=0.26"></script>
-<script src="app.js?v=0.27"></script>
+<script src="data.js?v=0.28"></script>
+<script src="app.js?v=0.29"></script>
 </body></html>

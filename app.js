@@ -49,15 +49,16 @@ const DEFAULT_RATING=56;
 const SAVE_KEY="bhfm";
 const SAVE_BACKUP_KEY="bhfm_backup";
 const SAVE_VERSION=9;
-const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,lossStreak:0,managerFired:false,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],transferOffers:[],aiBudgets:{},cup:null,playerStats:{},seasonHistory:[],achievements:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,pendingMatch:null,jobNotice:"",celebration:null,saveVersion:SAVE_VERSION};
+const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,lossStreak:0,managerFired:false,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],transferOffers:[],regionalPlayers:[],regionalMarketSeeded:false,aiBudgets:{},cup:null,playerStats:{},seasonHistory:[],achievements:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,pendingMatch:null,jobNotice:"",celebration:null,saveVersion:SAVE_VERSION};
 function isObject(value){return !!value&&typeof value==="object"&&!Array.isArray(value)}
 function normalizeSavedState(raw){
  if(!isObject(raw))return null;
  if(!("club" in raw)&&!("season" in raw)&&!("players" in raw))return null;
  const oldVersion=Number(raw.saveVersion)||0;
  const merged={...JSON.parse(JSON.stringify(DEFAULT_STATE)),...raw};
- const arrayKeys=["players","xi","fixtures","results","jobBoard","jobOffers","repHistory","transferPool","transfersDone","transferOffers","seasonHistory"];
+ const arrayKeys=["players","xi","fixtures","results","jobBoard","jobOffers","repHistory","transferPool","transfersDone","transferOffers","regionalPlayers","seasonHistory"];
  for(const key of arrayKeys)if(!Array.isArray(merged[key]))merged[key]=[];
+ if(typeof merged.regionalMarketSeeded!=="boolean")merged.regionalMarketSeeded=false;
  if(!Array.isArray(merged.promotionHistory))merged.promotionHistory=[];
  if(!Array.isArray(merged.achievements))merged.achievements=[];
  const objectKeys=["table","playerStats","clubSquads","competitionStates","aiBudgets"];
@@ -110,6 +111,7 @@ function loadInitialState(){
  return JSON.parse(JSON.stringify(DEFAULT_STATE));
 }
 let state=loadInitialState();
+let selectedTacticPlayerId=null;
 let matchPlaybackTimer=null;
 function applyLeagueMembership(){
  if(state.leagueMembership&&typeof state.leagueMembership==="object"){
@@ -202,7 +204,7 @@ function squadRating(){
 }
 function squadSourceNote(){
  const counts={};(state.players||[]).forEach(p=>{const label=p.rosterSource||"existing save";counts[label]=(counts[label]||0)+1;});
- const labels={"public-roster":"public-roster names","match-sheet":"match-sheet names",generated:"generated depth",seeded:"seeded roster names","existing save":"saved squad players"};
+ const labels={"public-roster":"public-roster names","match-sheet":"match-sheet names",generated:"generated depth",seeded:"seeded roster names","regional-market":"regional transfer market","existing save":"saved squad players"};
  const urls=[...new Set((state.players||[]).map(p=>p.sourceUrl).filter(Boolean))];
  const summary=Object.entries(counts).map(([k,n])=>`${n} ${labels[k]||k}`).join(" · ");
  return `<div class="sub">${summary}${urls.length?` · ${urls.map((url,i)=>`<a href="${url}" target="_blank" rel="noopener">Source ${i+1}</a>`).join(" · ")}`:""}</div>`;
@@ -312,14 +314,39 @@ function transferStatus(){
  if(state.matchday>=midStart&&state.matchday<=midEnd) return {type:"mid",remaining:midEnd-state.matchday+1,label:`Mid-season transfer window • ${midEnd-state.matchday+1} matchday ticks remaining`};
  return {type:"closed",remaining:0,label:`Transfer window closed • Mid-season opens at matchday ${midStart}`};
 }
+function ensureRegionalTransferPlayers(){
+ if(!Array.isArray(state.regionalPlayers))state.regionalPlayers=[];
+ if(state.regionalMarketSeeded)return;
+ state.regionalPlayers=REGIONAL_TRANSFER_PLAYERS.map((p,i)=>({...p,id:`regional::${p.nationality.toLowerCase()}::${i}`,rosterSource:"regional-market"}));
+ state.regionalMarketSeeded=true;
+}
+function regionalTransferEntries(){
+ ensureRegionalTransferPlayers();
+ return state.regionalPlayers.map(p=>({id:p.id,club:`${p.nationality} • Regional market`,marketOrigin:p.nationality,nationality:p.nationality,pos:p.pos,name:p.name,age:p.age,ovr:p.ovr,fee:Math.max(15000,Math.round((p.ovr-45)*(p.ovr-45)*900)),wage:Math.max(400,Math.round((p.ovr-45)*45))}));
+}
+function regionalTransferSelection(excluded=new Set()){
+ const available=regionalTransferEntries().filter(p=>!excluded.has(String(p.id))&&p.ovr>=54),selected=[];
+ for(const nationality of ["Serbia","Croatia"])for(const pos of ["GK","DEF","MID","ATT"]){
+  const option=shuffle(available.filter(p=>p.nationality===nationality&&p.pos===pos&&!selected.some(x=>x.id===p.id)))[0];
+  if(option)selected.push(option);
+ }
+ const remaining=shuffle(available.filter(p=>!selected.some(x=>x.id===p.id)));
+ return [...selected,...remaining.slice(0,Math.max(0,8-selected.length))];
+}
 function generateTransferPool(){
- ensureClubSquads();
+ ensureClubSquads();ensureRegionalTransferPlayers();
  const all=[];Object.entries(state.clubSquads).forEach(([club,players])=>players.forEach(p=>all.push({id:p.id,club,pos:p.pos,name:p.name,age:p.age,ovr:p.ovr,fee:Math.max(15000,Math.round((p.ovr-45)*(p.ovr-45)*900)),wage:Math.max(400,Math.round((p.ovr-45)*45))})));
  const candidates=all.filter(p=>p.club!==state.club&&p.ovr>=Math.max(55,teamRating(state.club)-6));
- return shuffle(candidates).slice(0,24);
+ return [...shuffle(candidates).slice(0,18),...regionalTransferSelection()];
 }
 
-function ensureTransferPool(){if(!Array.isArray(state.transferPool)||!state.transferPool.length)state.transferPool=generateTransferPool()}
+function ensureTransferPool(){
+ if(!Array.isArray(state.transferPool)||!state.transferPool.length){state.transferPool=generateTransferPool();return}
+ const known=new Set(state.transferPool.map(p=>String(p.id)));
+ const currentRegional=state.transferPool.filter(p=>p.marketOrigin).length;
+ const regional=regionalTransferSelection(known).slice(0,Math.max(0,8-currentRegional));
+ state.transferPool.push(...regional);
+}
 function initialAIBudget(club){
  const league=Object.keys(leagues).find(name=>playableClubsForLeague(name).includes(club));
  return league==="Premijer Liga BiH"?1200000:league==="Prva liga FBiH"||league==="Prva liga RS"?400000:100000;
@@ -454,7 +481,7 @@ function buildSeasonReport(development,retired,squadStart){
  const topAssist=[...stats].sort((a,b)=>b.assists-a.assists||b.goals-a.goals)[0];
  const bestDev=[...development].sort((a,b)=>b.delta-a.delta)[0];
  const oldRating=squadStart;
- return {season:state.season,label:currentSeasonLabel(),club:state.club,position:pos,points:tableRow?.pts||0,played:tableRow?.p||0,wins:tableRow?.w||0,draws:tableRow?.d||0,losses:tableRow?.l||0,gf:tableRow?.gf||0,ga:tableRow?.ga||0,cup:state.cup?.winner===state.club?"Winners":(state.cup?.results?.some(rs=>rs.some(r=>(r.home===state.club||r.away===state.club)&&((r.home===state.club?r.hg:r.ag)<(r.home===state.club?r.ag:r.hg))))?"Eliminated":"Not completed"),squadRatingStart:oldRating,squadRatingEnd:squadRating(),topScorer:topScorer?{name:topScorer.name,goals:topScorer.goals,assists:topScorer.assists}:null,topAssist:topAssist?{name:topAssist.name,assists:topAssist.assists,goals:topAssist.goals}:null,bestDev:bestDev||null,development,retired:retired.filter(p=>p.club===state.club).map(p=>({name:p.name,age:p.age})),stats:stats.map(x=>({...x})),leagueReward:leaguePrize,cupReward:state.cup?.rewardMoney||0,totalRewards:leaguePrize+(state.cup?.rewardMoney||0),balance:state.balance};
+ return {season:state.season,label:currentSeasonLabel(),club:state.club,position:pos,points:tableRow?.pts||0,played:tableRow?.p||0,wins:tableRow?.w||0,draws:tableRow?.d||0,losses:tableRow?.l||0,gf:tableRow?.gf||0,ga:tableRow?.ga||0,cup:state.cup?.winner===state.club?"Winners":(state.cup?.results?.some(rs=>rs.some(r=>(r.home===state.club||r.away===state.club)&&cupWinnerForResult(r)!==state.club))?"Eliminated":"Not completed"),squadRatingStart:oldRating,squadRatingEnd:squadRating(),topScorer:topScorer?{name:topScorer.name,goals:topScorer.goals,assists:topScorer.assists}:null,topAssist:topAssist?{name:topAssist.name,assists:topAssist.assists,goals:topAssist.goals}:null,bestDev:bestDev||null,development,retired:retired.filter(p=>p.club===state.club).map(p=>({name:p.name,age:p.age})),stats:stats.map(x=>({...x})),leagueReward:leaguePrize,cupReward:state.cup?.rewardMoney||0,totalRewards:leaguePrize+(state.cup?.rewardMoney||0),balance:state.balance};
 }
 function leagueReward(position){
  const rewards={1:150000,2:120000,3:100000,4:80000,5:65000,6:50000,7:40000,8:30000,9:20000,10:10000,11:9000,12:8000,13:7000,14:6000,15:5000,16:4000};
@@ -464,6 +491,7 @@ function cupRewardForRound(round){
  // Reward is paid when a club wins/passes a round: R32 20k, R16 40k, QF 80k, SF 160k.
  return 20000*Math.pow(2,Math.max(0,round-1));
 }
+function cupWinnerForResult(result){return result?.winner||(result?.hg===result?.ag?null:result.hg>result.ag?result.home:result.away)}
 function addAchievement(type,title,description,emoji="🏆",extra={}){
  state.achievements=Array.isArray(state.achievements)?state.achievements:[];
  const season=Number(extra.season??state.season),club=extra.club||state.club;
@@ -508,11 +536,7 @@ function finishSeason(){
  if(state.cup){
    if(state.cup.winner===state.club) cupLabel="Winners";
    else if(Array.isArray(state.cup.results)){
-     const eliminated=state.cup.results.flat().some(r=>{
-       if(r.home!==state.club&&r.away!==state.club)return false;
-       const mine=r.home===state.club?r.hg:r.ag, opp=r.home===state.club?r.ag:r.hg;
-       return mine<opp;
-     });
+     const eliminated=state.cup.results.flat().some(r=>(r.home===state.club||r.away===state.club)&&cupWinnerForResult(r)!==state.club);
      if(eliminated)cupLabel="Eliminated";
    }
  }
@@ -641,10 +665,10 @@ function autoPickXI(){
  const used=new Set(picked.filter(Boolean));
  const remaining=available.filter(player=>!used.has(player.id));
  formation.forEach((_,index)=>{if(!picked[index]&&remaining.length)picked[index]=remaining.shift().id;});
- state.xi=picked.filter(Boolean);normalizeXI();save();render();
+ state.xi=picked.filter(Boolean);selectedTacticPlayerId=null;normalizeXI();save();render();
 }
 
-function initClub(){ensureClubSquads();loadClubSquad(state.club);initSeason(false);save()}
+function initClub(){ensureRegionalTransferPlayers();ensureClubSquads();loadClubSquad(state.club);initSeason(false);save()}
 function tabs(){let t=["Home","Squad & Tactics","Player Stats","League","All Leagues","Results","Cup","Jobs","Transfers","Match Report","Season Report","History"];document.getElementById("tabs").innerHTML=t.map(x=>`<button class="${state.tab===x?'on':''}" onclick="state.tab='${x}';save();render()">${x}</button>`).join("")}
 function ensureSeasonReady(){
   if(state.seasonReport) return;
@@ -666,6 +690,7 @@ function ensureSeasonReady(){
   }
 }
 function render(){
+ if(state.tab!=="Squad & Tactics")selectedTacticPlayerId=null;
  ensureSeasonReady();
  if(state.matchday>=seasonMatchdays()&&!state.seasonReport){ finishSeason(); return; }
  tabs();
@@ -959,7 +984,7 @@ function toggleLiveMatchPlayback(){
  else{if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}pb.paused=true;}
  save();render();
 }
-function liveEventIcon(type){return type==="goal"?"⚽":type==="yellow"?"🟨":type==="red"?"🟥":type==="save"?"🧤":type==="chance"?"🔥":type==="shot"?"🎯":type==="half"?"⏸️":type==="full"?"🏁":"•"}
+function liveEventIcon(type){return type==="goal"?"⚽":type==="yellow"?"🟨":type==="red"?"🟥":type==="save"?"🧤":type==="chance"?"🔥":type==="shot"?"🎯":type==="penalty"?"🥅":type==="half"?"⏸️":type==="full"?"🏁":"•"}
 function playMatch(){
  if(state.managerFired){state.tab="Jobs";state.jobNotice=`You were dismissed by ${state.club}. Apply for another club to continue your career.`;save();render();return;}
  if(state.pendingMatch){state.tab="Match Report";render();return;}
@@ -1014,6 +1039,7 @@ function resumeSecondHalf(){
  const second=remapMatchSegment(secondRaw,46,90,"full");
  const finalHome=first.hg+homeSecond,finalAway=first.ag+awaySecond;
  const report=combineMatchSegments(first,second,finalHome,finalAway);
+ report.competition=pending.competition||"league";report.competitionLabel=pending.competitionLabel||null;
  report.events.push({minute:46,type:"tactic",text:`Second-half plan: ${state.mentality}. Team talk: ${choices.talk}. ${substitutionText}`,team:state.club,player:null});
  report.events.sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0));
  report.stats.shotsOnTarget[0]=Math.max(report.stats.shotsOnTarget[0],finalHome);report.stats.shotsOnTarget[1]=Math.max(report.stats.shotsOnTarget[1],finalAway);
@@ -1035,6 +1061,21 @@ function completePendingMatch(){
  const pending=state.pendingMatch;if(!pending||!pending.finalReport)return;
  const report=pending.finalReport,fixture=pending.fixture;
  const finalHome=report.hg,finalAway=report.ag;
+ if(pending.competition==="cup"){
+  updatePlayerStatsFromReport(report,"cup");
+  const games=pending.results;games[pending.roundIndex]={...fixture,hg:finalHome,ag:finalAway,referee:report.referee,refereeProfile:report.refereeProfile};
+  if(finalHome===finalAway){
+   const winner=chooseCupShootoutWinner(fixture.home,fixture.away);
+   const penalties=winner===fixture.home?[5,4]:[4,5];
+   report.penaltyWinner=winner;report.penalties=penalties;
+   report.events.push({minute:90,type:"penalty",text:`${winner} win the penalty shoot-out ${penalties[0]}–${penalties[1]}.`,team:winner,player:null});
+   games[pending.roundIndex].winner=winner;games[pending.roundIndex].penalties=penalties;
+  }else games[pending.roundIndex].winner=finalHome>finalAway?fixture.home:fixture.away;
+  games.forEach((game,i)=>{if(i!==pending.roundIndex)updatePlayerStatsForResult(game,"cup");});
+  state.lastMatch=report;state.pendingMatch=null;
+  finishCupRound(games);
+  save();state.tab="Match Report";render();return;
+ }
  // Only commit the matchday after the manager completes the second half.
  updatePlayerStatsFromReport(report);
  const roundResults=pending.results;
@@ -1062,28 +1103,30 @@ function matchReportPage(){
    const pb=p.playback||(p.playback={segment:p.phase,index:0,shown:[],score:p.phase==="second"?[m.hg,m.ag]:[0,0],goalOverlay:null,paused:false});
    const events=(pb.shown||[]).map(e=>`<div class="live-event"><b class="live-minute">${e.minute}'</b><span class="live-icon">${liveEventIcon(e.type)}</span><span>${e.text}</span></div>`).join("");
    const segment=p.phase==="first"?"First half":"Second half";
-   document.getElementById("app").innerHTML=`${pb.goalOverlay?`<div class="goal-overlay" role="status" aria-live="assertive"><div class="goal-panel"><div class="goal-word">GOAL!</div><div class="goal-score">${pb.goalOverlay.score[0]} – ${pb.goalOverlay.score[1]}</div><div class="goal-copy">${pb.goalOverlay.team} • ${pb.goalOverlay.event.text}</div></div></div>`:""}<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday+1} • ${segment}</div><h2 class="live-score">${p.fixture.home} <span>${pb.score?.[0]||0} – ${pb.score?.[1]||0}</span> ${p.fixture.away}</h2></div><div class="card"><div class="row"><h3>Live commentary</h3><span class="sub">Events play automatically</span></div><div id="liveEventFeed" class="live-feed" aria-live="polite">${events||'<div class="sub" style="padding:12px 0">Kick-off. The teams are settling into the match.</div>'}</div><div class="live-controls"><button onclick="toggleLiveMatchPlayback()">${pb.paused?"Resume":"Pause"}</button></div></div>`;
+   const matchContext=p.competition==="cup"?`Kup BiH • ${p.competitionLabel||state.cup?.roundName||"Cup tie"}`:`${state.league} • Matchday ${state.matchday+1}`;
+   document.getElementById("app").innerHTML=`${pb.goalOverlay?`<div class="goal-overlay" role="status" aria-live="assertive"><div class="goal-panel"><div class="goal-word">GOAL!</div><div class="goal-score">${pb.goalOverlay.score[0]} – ${pb.goalOverlay.score[1]}</div><div class="goal-copy">${pb.goalOverlay.team} • ${pb.goalOverlay.event.text}</div></div></div>`:""}<div class="card"><div class="sub">${matchContext} • ${segment}</div><h2 class="live-score">${p.fixture.home} <span>${pb.score?.[0]||0} – ${pb.score?.[1]||0}</span> ${p.fixture.away}</h2></div><div class="card"><div class="row"><h3>Live commentary</h3><span class="sub">Events play automatically</span></div><div id="liveEventFeed" class="live-feed" aria-live="polite">${events||'<div class="sub" style="padding:12px 0">Kick-off. The teams are settling into the match.</div>'}</div><div class="live-controls"><button onclick="toggleLiveMatchPlayback()">${pb.paused?"Resume":"Pause"}</button></div></div>`;
    const feed=document.getElementById("liveEventFeed");if(feed)feed.scrollTop=feed.scrollHeight;
    return;
   }
   const shown=p.playback?.shown;
   const halfEvents=(Array.isArray(shown)&&shown.length?shown:m.events).map(e=>`<div class="live-event"><b class="live-minute">${e.minute}'</b><span class="live-icon">${liveEventIcon(e.type)}</span><span>${e.text}</span></div>`).join("");
-  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${state.league} • Matchday ${state.matchday+1}</div><h2 style="text-align:center">HALF-TIME</h2><h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2><div class="notice">Referee: <b>${refereeSummary(m)}</b><div class="sub">The game profile affects goal rates and disciplinary decisions. It is simulated and does not describe the named official's real style.</div></div></div><div class="card"><h3>First-half commentary</h3><div class="live-feed" aria-live="polite">${halfEvents}</div></div><div class="card"><h3>Second-half tactics</h3><label>Team mentality</label><select id="htTactic" style="width:100%;margin:6px 0 12px"><option ${choices.tactic==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${choices.tactic==="Defensive"?"selected":""}>Defensive</option><option ${choices.tactic==="Balanced"?"selected":""}>Balanced</option><option ${choices.tactic==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${choices.tactic==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${choices.tactic==="Attacking"?"selected":""}>Attacking</option></select><label>Team talk</label><select id="htTalk" style="width:100%;margin:6px 0 12px"><option ${choices.talk==="Encourage"?"selected":""}>Encourage</option><option ${choices.talk==="Demand more"?"selected":""}>Demand more</option><option ${choices.talk==="Calm down"?"selected":""}>Calm down</option></select><label>Half-time substitution</label><select id="htSub" style="width:100%;margin:6px 0 12px"><option value="none" ${choices.substitution==="none"?"selected":""}>No substitution</option><option value="fresh" ${choices.substitution==="fresh"?"selected":""}>Replace lowest-rated starter with best available substitute</option><option value="attacking" ${choices.substitution==="attacking"?"selected":""}>Make an attacking change</option></select><button class="primary" style="width:100%" onclick="saveHalfTimeChoicesAndResume()">Apply changes & start second-half commentary</button><p class="sub">Your choices affect the second-half simulation. The matchday and league table are not committed until full-time.</p></div>`;return;
+  const matchContext=p.competition==="cup"?`Kup BiH • ${p.competitionLabel||state.cup?.roundName||"Cup tie"}`:`${state.league} • Matchday ${state.matchday+1}`;
+  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${matchContext}</div><h2 style="text-align:center">HALF-TIME</h2><h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2><div class="notice">Referee: <b>${refereeSummary(m)}</b><div class="sub">The game profile affects goal rates and disciplinary decisions. It is simulated and does not describe the named official's real style.</div></div></div><div class="card"><h3>First-half commentary</h3><div class="live-feed" aria-live="polite">${halfEvents}</div></div><div class="card"><h3>Second-half tactics</h3><label>Team mentality</label><select id="htTactic" style="width:100%;margin:6px 0 12px"><option ${choices.tactic==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${choices.tactic==="Defensive"?"selected":""}>Defensive</option><option ${choices.tactic==="Balanced"?"selected":""}>Balanced</option><option ${choices.tactic==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${choices.tactic==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${choices.tactic==="Attacking"?"selected":""}>Attacking</option></select><label>Team talk</label><select id="htTalk" style="width:100%;margin:6px 0 12px"><option ${choices.talk==="Encourage"?"selected":""}>Encourage</option><option ${choices.talk==="Demand more"?"selected":""}>Demand more</option><option ${choices.talk==="Calm down"?"selected":""}>Calm down</option></select><label>Half-time substitution</label><select id="htSub" style="width:100%;margin:6px 0 12px"><option value="none" ${choices.substitution==="none"?"selected":""}>No substitution</option><option value="fresh" ${choices.substitution==="fresh"?"selected":""}>Replace lowest-rated starter with best available substitute</option><option value="attacking" ${choices.substitution==="attacking"?"selected":""}>Make an attacking change</option></select><button class="primary" style="width:100%" onclick="saveHalfTimeChoicesAndResume()">Apply changes & start second-half commentary</button><p class="sub">Your choices affect the second-half simulation. The matchday and league table are not committed until full-time.</p></div>`;return;
  }
  const m=state.lastMatch;
  if(!m){document.getElementById("app").innerHTML='<div class="card"><h2>Match Report</h2><div class="sub">Play a match to generate a detailed match report.</div></div>';return}
  const isHome=m.home===state.club, myScore=isHome?m.hg:m.ag, oppScore=isHome?m.ag:m.hg;
  const events=m.events.map(e=>{
    const label=e.minute===45?"45'":e.minute===90?"90'":`${e.minute}'`;
-   const icon=e.type==="goal"?"⚽":e.type==="yellow"?"🟨":e.type==="red"?"🟥":e.type==="save"?"🧤":e.type==="chance"?"🔥":e.type==="shot"?"🎯":e.type==="half"?"⏸️":"🏁";
+   const icon=e.type==="goal"?"⚽":e.type==="yellow"?"🟨":e.type==="red"?"🟥":e.type==="save"?"🧤":e.type==="chance"?"🔥":e.type==="shot"?"🎯":e.type==="penalty"?"🥅":e.type==="half"?"⏸️":"🏁";
    return `<div class="row" style="padding:9px 0;border-bottom:1px solid var(--line);align-items:flex-start"><b style="min-width:42px">${label}</b><span>${icon} ${e.text}</span></div>`;
  }).join("");
  const sh=m.stats;
  const homePoss=sh.possession[0], awayPoss=100-homePoss;
  document.getElementById("app").innerHTML=`
- <div class="card"><div class="sub">${state.league} • Matchday ${state.matchday}</div>
+ <div class="card"><div class="sub">${m.competition==="cup"?`Kup BiH • ${m.competitionLabel||state.cup?.roundName||"Cup tie"}`:`${state.league} • Matchday ${state.matchday}`}</div>
  <h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2>
- <p style="text-align:center" class="sub">${myScore>oppScore?"🏆 Victory":myScore<oppScore?"Defeat":"Draw"} • ${state.mentality}</p><div class="notice">Referee: <b>${refereeSummary(m)}</b><div class="sub">The game profile affected goal rates and disciplinary decisions. It is simulated and does not describe the named official's real style.</div></div></div>
+ <p style="text-align:center" class="sub">${m.penaltyWinner===state.club?"🏆 Victory on penalties":myScore>oppScore?"🏆 Victory":myScore<oppScore?"Defeat":"Draw"} • ${state.mentality}</p>${m.penalties?`<div class="notice" style="text-align:center">Penalty shoot-out: ${m.penalties[0]}–${m.penalties[1]} • ${m.penaltyWinner} advance</div>`:""}<div class="notice">Referee: <b>${refereeSummary(m)}</b><div class="sub">The game profile affected goal rates and disciplinary decisions. It is simulated and does not describe the named official's real style.</div></div></div>
  ${Number.isFinite(m.attendance)?`<div class="card"><h3>Matchday gate</h3><div class="row"><span>${m.stadium||stadiumForClub(m.home).name}</span><b>${Number(m.attendance).toLocaleString()} / ${Number(m.stadiumCapacity||stadiumForClub(m.home).capacity).toLocaleString()}</b></div>${isHome?`<div class="row"><span>Ticket sales</span><b>+€${Number(m.ticketRevenue||0).toLocaleString()}</b></div>`:'<div class="sub">Ticket income goes to the home club.</div>'}</div>`:""}
  <div class="card"><h3>Match timeline</h3>${events}</div>
  <div class="card"><h3>Match statistics</h3>
@@ -1104,16 +1147,34 @@ function squad(){
  if(!state.players.length)initClub(); normalizeXI();
  let formation=formations[state.formation],mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||null}));
  const bench=state.players.filter(p=>!state.xi.includes(p.id));
- const sourceLabel=p=>p.rosterSource==="match-sheet"?"Match sheet":p.rosterSource==="public-roster"?"Public roster":p.rosterSource==="generated"?"Generated depth":"Seeded roster";
- const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>`<div class="player"><span>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs • ${sourceLabel(p)}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11?"disabled":""}>Sell</button>`:""}</div>`).join("")}</div>`;
- document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div></div><div class="pitch">${mapped.map(m=>`<div class="mark" style="left:${m.slot[1]}%;top:${m.slot[2]}%"><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><button class="primary" onclick="autoPickXI()">Auto-pick</button><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.pos} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
-function changeFormation(f){state.formation=f;normalizeXI();save();render()}
+ const sourceLabel=p=>p.rosterSource==="match-sheet"?"Match sheet":p.rosterSource==="public-roster"?"Public roster":p.rosterSource==="generated"?"Generated depth":p.rosterSource==="regional-market"?`${p.nationality||"Regional"} market`:"Seeded roster";
+ const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>`<div class="player ${showSell?"":"tactic-bench-player"}" ${showSell?"":`draggable="true" onclick="selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}><span class="tactic-name ${String(selectedTacticPlayerId)===String(p.id)?"selected":""}" ${showSell?"":`onclick="event.stopPropagation();selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs • ${sourceLabel(p)}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11?"disabled":""}>Sell</button>`:""}</div>`).join("")}</div>`;
+ document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div><div class="sub tactic-hint">Tap one player's name, then another to swap them. You can also drag a player onto a position.</div></div><div class="pitch" ondragover="allowTacticDrop(event)">${mapped.map((m,i)=>`<div class="mark tactic-mark ${m.p&&String(selectedTacticPlayerId)===String(m.p.id)?"selected":""}" style="left:${m.slot[1]}%;top:${m.slot[2]}%" tabindex="0" role="button" aria-label="${m.slot[0]}: ${m.p?m.p.name:"Empty"}" onclick="selectTacticSlot(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectTacticSlot(${i})}" ondragover="allowTacticDrop(event)" ondrop="dropTacticPlayer(event,${i})" ${m.p?`draggable="true" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(m.p.id))}'))"`:""}><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><button class="primary" onclick="autoPickXI()">Auto-pick</button><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.pos} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
+function selectTacticPlayer(id){
+ id=String(id);if(!state.players.some(p=>String(p.id)===id))return;
+ if(selectedTacticPlayerId===null){selectedTacticPlayerId=id;render();return;}
+ if(String(selectedTacticPlayerId)===id){selectedTacticPlayerId=null;render();return;}
+ const from=state.xi.findIndex(x=>String(x)===String(selectedTacticPlayerId)),to=state.xi.findIndex(x=>String(x)===id);
+ if(from>=0&&to>=0){[state.xi[from],state.xi[to]]=[state.xi[to],state.xi[from]];selectedTacticPlayerId=null;normalizeXI();save();render();return;}
+ if(from>=0&&state.players.some(p=>String(p.id)===id)){selectedTacticPlayerId=null;replaceXI(from,id);return;}
+ if(to>=0){const slot=to;selectedTacticPlayerId=null;replaceXI(slot,id);return;}
+ selectedTacticPlayerId=id;render();
+}
+function selectTacticSlot(index){
+ const current=state.xi[index];if(!current)return;
+ if(selectedTacticPlayerId===null){selectedTacticPlayerId=String(current);render();return;}
+ selectTacticPlayer(current);
+}
+function dragTacticPlayer(event,id){event.dataTransfer.setData("text/plain",String(id));event.dataTransfer.effectAllowed="move";}
+function allowTacticDrop(event){event.preventDefault();if(event.dataTransfer)event.dataTransfer.dropEffect="move";}
+function dropTacticPlayer(event,index){event.preventDefault();event.stopPropagation();const id=event.dataTransfer.getData("text/plain");if(id)replaceXI(index,id);}
+function changeFormation(f){state.formation=f;selectedTacticPlayerId=null;normalizeXI();save();render()}
 function replaceXI(i,id){
- normalizeXI(); id=String(id);
+ normalizeXI(); const player=state.players.find(p=>String(p.id)===String(id));if(!player)return;id=player.id;
  const current=state.xi[i], other=state.xi.indexOf(id);
  if(other>=0 && other!==i){state.xi[other]=current;state.xi[i]=id}
- else if(state.players.some(p=>p.id===id)){state.xi[i]=id}
- normalizeXI();save();render()
+ else {state.xi[i]=id}
+ selectedTacticPlayerId=null;normalizeXI();save();render()
 }
 function resultsPage(){
  const rounds=state.results.slice().reverse();
@@ -1141,12 +1202,51 @@ function isCupTieDue(){
  const round=Number(state.cup.round)||0;
  return round>=1&&round<=5&&state.matchday>=round*4&&!!cupCurrentFixture();
 }
-function simulateCupGame(f){const referee=assignReferee(),xg=expectedGoalsForFixture(f.home,f.away,referee);let hg=Math.min(poissonish(xg.home),6),ag=Math.min(poissonish(xg.away),6);if(hg===ag){if(Math.random()<teamRating(f.home)/(teamRating(f.home)+teamRating(f.away)))hg++;else ag++;}return{...f,hg,ag,referee:referee.name,refereeProfile:referee.id};}
-function playCup(){if(state.managerFired){state.tab="Jobs";state.jobNotice=`You were dismissed by ${state.club}. Apply for another club to continue your career.`;save();render();return;}initCup();if(!isCupTieDue()){state.jobNotice="Cup ties are scheduled after every four league matchdays.";render();return;}const f=cupCurrentFixture();if(!f){alert("Your club has no cup match in this round.");return;}let games=state.cup.pending.map(x=>simulateCupGame(x));games.forEach(r=>updatePlayerStatsForResult(r,"cup"));state.cup.results.push(games);let winners=games.map(r=>r.hg>r.ag?r.home:r.away);let userResult=games.find(r=>r.home===state.club||r.away===state.club);if(userResult){const cupGate=attendanceForFixture(userResult.home,userResult.away);userResult.stadium=cupGate.name;userResult.stadiumCapacity=cupGate.capacity;userResult.attendance=cupGate.attendance;if(userResult.home===state.club){userResult.ticketRevenue=cupGate.revenue;state.balance+=cupGate.revenue;}const my=userResult.home===state.club?userResult.hg:userResult.ag,opp=userResult.home===state.club?userResult.ag:userResult.hg;state.rep=Math.max(0,Math.min(100,state.rep+(my>opp?2:my===opp?0:-1))); if(my>opp){const prize=cupRewardForRound(state.cup.round); state.balance+=prize; state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}}if(winners.length===1){state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5; if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;addAchievement("cup-win","Kup BiH Winners",`${state.club} won Kup BiH.`,"🏆",{season:state.season,club:state.club});showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Your club receives the winner's bonus!`,"🏆","Cup");}}else{let next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);}save();render();}
+function chooseCupShootoutWinner(home,away){const homeRating=teamRating(home),awayRating=teamRating(away);return Math.random()<homeRating/(homeRating+awayRating)?home:away}
+function simulateCupGame(f){const referee=assignReferee(),xg=expectedGoalsForFixture(f.home,f.away,referee),hg=Math.min(poissonish(xg.home),6),ag=Math.min(poissonish(xg.away),6),result={...f,hg,ag,referee:referee.name,refereeProfile:referee.id};if(hg===ag){result.winner=chooseCupShootoutWinner(f.home,f.away);result.penalties=result.winner===f.home?[5,4]:[4,5]}else result.winner=hg>ag?f.home:f.away;return result}
+function finishCupRound(games){
+ state.cup.results.push(games);
+ const winners=games.map(r=>r.winner||(r.hg>r.ag?r.home:r.away));
+ const userResult=games.find(r=>r.home===state.club||r.away===state.club);
+ if(userResult){
+  const advanced=userResult.winner===state.club;
+  const homeGate=attendanceForFixture(userResult.home,userResult.away);
+  userResult.stadium=homeGate.name;userResult.stadiumCapacity=homeGate.capacity;userResult.attendance=homeGate.attendance;
+  if(userResult.home===state.club){userResult.ticketRevenue=homeGate.revenue;state.balance+=homeGate.revenue;}
+  if(state.lastMatch?.competition==="cup"&&state.lastMatch.home===userResult.home&&state.lastMatch.away===userResult.away){
+   Object.assign(state.lastMatch,{stadium:userResult.stadium,stadiumCapacity:userResult.stadiumCapacity,attendance:userResult.attendance,ticketRevenue:userResult.ticketRevenue||0});
+  }
+  state.rep=Math.max(0,Math.min(100,state.rep+(advanced?2:-1)));
+  if(advanced){const prize=cupRewardForRound(state.cup.round);state.balance+=prize;state.cup.rewardMoney=(state.cup.rewardMoney||0)+prize;}
+ }
+ if(winners.length===1){
+  state.cup.winner=winners[0];state.cup.pending=[];state.cup.round=5;
+  if(winners[0]===state.club){state.balance+=100000;state.cup.rewardMoney=(state.cup.rewardMoney||0)+100000;addAchievement("cup-win","Kup BiH Winners",`${state.club} won Kup BiH.`,"🏆",{season:state.season,club:state.club});showCelebration("cup-win","Kup BiH Winners!",`${state.club} have won the Kup BiH. Your club receives the winner's bonus!`,"🏆","Cup");}
+ }else{
+  const next=[];for(let i=0;i<winners.length;i+=2)next.push({home:winners[i],away:winners[i+1]});
+  state.cup.pending=next;state.cup.round++;state.cup.roundName=cupRoundName(state.cup.round);
+ }
+}
+function playCup(){
+ if(state.managerFired){state.tab="Jobs";state.jobNotice=`You were dismissed by ${state.club}. Apply for another club to continue your career.`;save();render();return;}
+ if(state.pendingMatch){state.tab="Match Report";render();return;}
+ initCup();if(!isCupTieDue()){state.jobNotice="Cup ties are scheduled after every four league matchdays.";render();return;}
+ const fixture=cupCurrentFixture();if(!fixture){alert("Your club has no cup match in this round.");return;}
+ normalizeXI();
+ const referee=assignReferee(),xg=expectedGoalsForFixture(fixture.home,fixture.away,referee),homeIsUser=fixture.home===state.club;
+ const squadFactor=Math.max(.9,Math.min(1.1,1+(state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).reduce((sum,p,_,arr)=>sum+p.ovr/Math.max(1,arr.length),0)-teamRating(state.club))*.012));
+ const homeTactic=homeIsUser?tacticGoalMultiplier(state.mentality):1,awayTactic=!homeIsUser?tacticGoalMultiplier(state.mentality):1;
+ const firstHome=Math.min(poissonish(xg.home*.46*(homeIsUser?squadFactor:1)*homeTactic),4),firstAway=Math.min(poissonish(xg.away*.46*(!homeIsUser?squadFactor:1)*awayTactic),4);
+ const first=remapMatchSegment(generateMatchReport({home:fixture.home,away:fixture.away,hg:firstHome,ag:firstAway},referee),1,45,"half");
+ const games=state.cup.pending.map(game=>game.home===fixture.home&&game.away===fixture.away?{...game,hg:firstHome,ag:firstAway,referee:referee.name,refereeProfile:referee.id}:simulateCupGame(game));
+ const roundIndex=games.findIndex(game=>game.home===fixture.home&&game.away===fixture.away);
+ state.pendingMatch={competition:"cup",competitionLabel:state.cup.roundName,results:games,roundIndex,fixture:{...fixture},firstHalf:first,referee,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
+ state.lastMatch={...first,competition:"cup",competitionLabel:state.cup.roundName,hg:firstHome,ag:firstAway,halfTime:true};state.tab="Match Report";save();render();
+}
 function cup(){
  initCup();const f=cupCurrentFixture(),due=isCupTieDue(),last=state.cup.results.length?state.cup.results[state.cup.results.length-1]:[];
  const scheduleMessage=f?(due?"This cup tie is scheduled now.":`Scheduled after league matchday ${state.cup.round*4}.`):"Your club has been eliminated or is not in this cup draw.";
- document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><div class="sub">${state.cup.winner?"Champion: "+state.cup.winner:state.cup.roundName+" • Knockout competition"}</div><div class="sub">Cup earnings: €${(state.cup.rewardMoney||0).toLocaleString()}</div>${f?`<div class="notice"><b>${f.home} vs ${f.away}</b><br>${scheduleMessage}</div>${due?'<button class="primary" onclick="playCup()">Play cup tie</button>':''}`:`<div class="notice">${scheduleMessage}</div>`}</div>${last.length?`<div class="card"><h3>Latest cup round</h3>${last.map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line);font-weight:${r.home===state.club||r.away===state.club?'800':'400'}"><span>${r.home}</span><b>${r.hg}–${r.ag}</b><span>${r.away}</span></div>${r.attendance?`<div class="sub">${r.stadium} • ${Number(r.attendance).toLocaleString()} / ${Number(r.stadiumCapacity).toLocaleString()} attended${r.home===state.club?` • Ticket sales +€${Number(r.ticketRevenue||0).toLocaleString()}`:""}</div>`:""}`).join("")}</div>`:""}`;
+ document.getElementById("app").innerHTML=`<div class="card"><h2>Kup BiH</h2><div class="sub">${state.cup.winner?"Champion: "+state.cup.winner:state.cup.roundName+" • Knockout competition"}</div><div class="sub">Cup earnings: €${(state.cup.rewardMoney||0).toLocaleString()}</div>${f?`<div class="notice"><b>${f.home} vs ${f.away}</b><br>${scheduleMessage}</div>${due?'<button class="primary" onclick="playCup()">Play cup tie</button>':''}`:`<div class="notice">${scheduleMessage}</div>`}</div>${last.length?`<div class="card"><h3>Latest cup round</h3>${last.map(r=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line);font-weight:${r.home===state.club||r.away===state.club?'800':'400'}"><span>${r.home}</span><b>${r.hg}–${r.ag}${r.penalties?` (pens ${r.penalties[0]}–${r.penalties[1]})`:""}</b><span>${r.away}</span></div>${r.attendance?`<div class="sub">${r.stadium} • ${Number(r.attendance).toLocaleString()} / ${Number(r.stadiumCapacity).toLocaleString()} attended${r.home===state.club?` • Ticket sales +€${Number(r.ticketRevenue||0).toLocaleString()}`:""}</div>`:""}`).join("")}</div>`:""}`;
 }
 function jobs(){
  refreshJobBoard(false);
@@ -1210,7 +1310,7 @@ function transfers(){
  const sorted=[...available].sort((a,b)=>sort==="rating"?(b.ovr-a.ovr)||a.name.localeCompare(b.name):sort==="price"?(a.fee-b.fee)||a.name.localeCompare(b.name):(a.pos.localeCompare(b.pos)||b.ovr-a.ovr||a.name.localeCompare(b.name)));
  const recentDeals=(state.transfersDone||[]).filter(t=>t.season===state.season).slice(-8).reverse();
  const activeOffers=(state.transferOffers||[]).filter(isAITransferOfferActive);
- document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p class="sub">${st.label}</p>
+ document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p class="sub">${st.label}</p>${st.type!=="closed"?'<p class="sub">The pool includes fictional regional-market players from Serbia and Croatia. Player ages and ratings are game estimates.</p>':""}
  <div class="row"><span><b>Sort transfer pool</b></span><select onchange="state.transferSort=this.value;save();render()"><option value="position" ${sort==="position"?"selected":""}>Position</option><option value="rating" ${sort==="rating"?"selected":""}>Rating</option><option value="price" ${sort==="price"?"selected":""}>Price</option></select></div>
  ${st.type==="mid"?`<div class="notice">Mid-season window lasts 4 matchday ticks. AI clubs can sign and sell squad players during each open matchday.</div>`:""}
  ${st.type==="summer"?`<div class="notice">Summer market lasts 10 transfer ticks. Advance a tick to refresh the pool and let the market move.</div><button class="primary" onclick="useTransferTick()">Advance summer transfer tick</button>`:""}
@@ -1221,10 +1321,16 @@ function transfers(){
 function buyPlayerById(id){
  const st=transferStatus();if(st.type==="closed")return;ensureClubSquads();ensureAIBudgets();
  const p=state.transferPool.find(x=>String(x.id)===String(id)&&x.club!==state.club);if(!p||state.balance<p.fee)return;
- const source=state.clubSquads[p.club]||[];const sourceIndex=source.findIndex(x=>String(x.id)===String(p.id));if(sourceIndex<0)return;
- state.balance-=p.fee;state.aiBudgets[p.club]=Number(state.aiBudgets[p.club]||0)+p.fee;state.clubSquads[p.club]=source.filter((_,i)=>i!==sourceIndex);
- const moved=clonePlayer(source[sourceIndex]);state.players.push(moved);state.clubSquads[state.club]=state.players.map(clonePlayer);
- normalizeXI();state.transfersDone.push({name:moved.name,from:p.club,to:state.club,fee:p.fee,id:moved.id,season:state.season});
+ let moved;
+ if(p.marketOrigin){
+  ensureRegionalTransferPlayers();const sourceIndex=state.regionalPlayers.findIndex(x=>String(x.id)===String(p.id));if(sourceIndex<0)return;
+  moved=clonePlayer(state.regionalPlayers[sourceIndex]);state.regionalPlayers.splice(sourceIndex,1);
+ }else{
+  const source=state.clubSquads[p.club]||[];const sourceIndex=source.findIndex(x=>String(x.id)===String(p.id));if(sourceIndex<0)return;
+  moved=clonePlayer(source[sourceIndex]);state.clubSquads[p.club]=source.filter((_,i)=>i!==sourceIndex);state.aiBudgets[p.club]=Number(state.aiBudgets[p.club]||0)+p.fee;
+ }
+ state.balance-=p.fee;state.players.push(moved);state.clubSquads[state.club]=state.players.map(clonePlayer);
+ normalizeXI();state.transfersDone.push({name:moved.name,from:p.marketOrigin||p.club,to:state.club,fee:p.fee,id:moved.id,season:state.season});
  if(p.fee>=250000)addAchievement("major-transfer",`Major signing: ${moved.name}`,`${state.club} signed ${moved.name} from ${p.club} for €${Number(p.fee).toLocaleString()}.`,"💸",{season:state.season,club:state.club,fee:p.fee,player:moved.name});
  state.transferPool=state.transferPool.filter(x=>String(x.id)!==String(p.id));save();render();
 }
@@ -1236,6 +1342,7 @@ function sellPlayer(id){
  const fee=Math.round(playerValue(p)*0.55);
  if(!confirm(`Sell ${p.name} for €${fee.toLocaleString()}?`))return;
  state.players=state.players.filter(x=>String(x.id)!==String(id));
+ selectedTacticPlayerId=null;
  syncCurrentClub();
  state.xi=state.xi.filter(x=>String(x)!==String(id));
  normalizeXI(); state.balance+=fee; state.transfersDone.push({name:p.name,from:state.club,to:"Sold",fee,season:state.season}); if(fee>=250000)addAchievement("major-sale",`Major sale: ${p.name}`,`${state.club} sold ${p.name} for €${Number(fee).toLocaleString()}.`,"💰",{season:state.season,club:state.club,fee,player:p.name});

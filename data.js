@@ -171,3 +171,27 @@ const ROSTER_AUDIT={
   positions:{"Faris Ribić":"GK","Eldin Mataradžić":"GK","Emil Velić":"GK","Mohamed Abdallah Abdallah":"DEF","Abdullah Raffidine":"MID","Ante Hrkać":"MID","Ajdin Nukić":"DEF","Anes Omerović":"DEF","Said Duranović":"DEF","Adin Bajrić":"DEF","Filip Šetić":"DEF","Bojan Zulović":"DEF","Dino Halilović":"MID","Dino Puce":"MID","Kerim Džuliman":"MID","Benjamin Leković":"MID","Ahmed Bešagić":"MID","Muhamed Bešić":"MID","Đani Salčin":"MID","Ayham Shhade":"MID","Nino Stojanović":"ATT","Armin Imamović":"DEF","Aldin Mešić":"ATT","Beni Redžić":"ATT","Anes Pajević":"ATT","Faruk Dževahirić":"ATT","Vedad Abidović":"ATT","Luka Ignatov":"ATT","Carlo Mateković":"ATT","Esmir Hasukić":"ATT"}
  }
 };
+// Fictional players for the wider transfer market. These are gameplay profiles,
+// not real registered players; ratings and ages are game estimates.
+const REGIONAL_TRANSFER_PLAYERS=[
+ {nationality:"Serbia",pos:"GK",name:"Nikola Petrović",age:25,ovr:61},
+ {nationality:"Serbia",pos:"DEF",name:"Miloš Vuković",age:22,ovr:62},
+ {nationality:"Serbia",pos:"DEF",name:"Marko Simić",age:27,ovr:63},
+ {nationality:"Serbia",pos:"DEF",name:"Vasilije Kovač",age:20,ovr:60},
+ {nationality:"Serbia",pos:"MID",name:"Uroš Radovanović",age:23,ovr:65},
+ {nationality:"Serbia",pos:"MID",name:"Dušan Marković",age:28,ovr:67},
+ {nationality:"Serbia",pos:"MID",name:"Nemanja Pavlović",age:26,ovr:64},
+ {nationality:"Serbia",pos:"ATT",name:"Lazar Jovanović",age:21,ovr:64},
+ {nationality:"Serbia",pos:"ATT",name:"Stefan Nikolić",age:24,ovr:66},
+ {nationality:"Serbia",pos:"ATT",name:"Andrej Ilić",age:19,ovr:59},
+ {nationality:"Croatia",pos:"GK",name:"Mateo Kovač",age:24,ovr:63},
+ {nationality:"Croatia",pos:"DEF",name:"Ivan Horvat",age:22,ovr:65},
+ {nationality:"Croatia",pos:"DEF",name:"Petar Radić",age:24,ovr:62},
+ {nationality:"Croatia",pos:"DEF",name:"Dario Kralj",age:28,ovr:64},
+ {nationality:"Croatia",pos:"MID",name:"Luka Marić",age:21,ovr:64},
+ {nationality:"Croatia",pos:"MID",name:"Ante Babić",age:26,ovr:65},
+ {nationality:"Croatia",pos:"MID",name:"Filip Jurić",age:23,ovr:66},
+ {nationality:"Croatia",pos:"ATT",name:"Josip Perić",age:25,ovr:67},
+ {nationality:"Croatia",pos:"ATT",name:"Marko Šarić",age:20,ovr:61},
+ {nationality:"Croatia",pos:"ATT",name:"Toni Vuković",age:19,ovr:60}
+];
