@@ -232,8 +232,9 @@ function tacticGoalMultiplier(tactic){return tactic==="Attacking"?1.12:tactic===
 function playableClubsForLeague(name){return (leagues[name]||[]).filter(c=>c&&!String(c).startsWith("TBD")&&!String(c).includes("regional"));}
 function leagueClubs(){return playableClubsForLeague(state.league)}
 function meetingsForLeague(name=state.league){return name==="Premijer Liga BiH"?4:2}
-function seasonMatchdays(){return Math.max(0,(leagueClubs().length-1)*meetingsForLeague())}
-function leagueRoundCount(name){const clubs=playableClubsForLeague(name);return clubs.length<2?0:(clubs.length-1)*meetingsForLeague(name)}
+function matchdaysForClubCount(count,name){return count<2?0:(count%2===0?count-1:count)*meetingsForLeague(name)}
+function seasonMatchdays(){return matchdaysForClubCount(leagueClubs().length,state.league)}
+function leagueRoundCount(name){return matchdaysForClubCount(playableClubsForLeague(name).length,name)}
 function createCompetitionSnapshot(name){
  const clubs=playableClubsForLeague(name);
  return {season:state.season,matchday:0,fixtures:generateFixturesForLeague(clubs,name),table:makeTableForClubs(clubs),results:[],lastMatch:null};
@@ -259,7 +260,7 @@ function advanceOtherLeaguesOneRound(activeLeague){
   const clubs=playableClubsForLeague(name);if(clubs.length<2)return;
   const snap=ensureCompetitionSnapshot(name);if(!snap)return;
   const total=leagueRoundCount(name);if(snap.matchday>=total)return;
-  const perRound=clubs.length/2;
+  const perRound=Math.floor(clubs.length/2);
   const round=snap.fixtures.slice(snap.matchday*perRound,(snap.matchday+1)*perRound);
   if(!round.length)return;
   const results=round.map(simulateFixture);
@@ -270,8 +271,9 @@ function advanceOtherLeaguesOneRound(activeLeague){
 function makeTableForClubs(clubs){const t={};clubs.forEach(c=>t[c]={club:c,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0});return t}
 function makeTable(){return makeTableForClubs(leagueClubs())}
 function generateFixturesForLeague(clubs,name){
- let arr=[...clubs],n=arr.length,rounds=[]; if(n<2||n%2!==0)return [];
- for(let r=0;r<n-1;r++){let games=[];for(let i=0;i<n/2;i++){let a=arr[i],b=arr[n-1-i];games.push(r%2===0?{home:a,away:b}:{home:b,away:a})}rounds.push(games);arr=[arr[0],arr[n-1],...arr.slice(1,n-1)]}
+ let arr=[...clubs],n=arr.length,rounds=[]; if(n<2)return [];if(n%2!==0)arr.push(null);
+ const ringSize=arr.length;
+ for(let r=0;r<ringSize-1;r++){let games=[];for(let i=0;i<ringSize/2;i++){let a=arr[i],b=arr[ringSize-1-i];if(!a||!b)continue;games.push(r%2===0?{home:a,away:b}:{home:b,away:a})}rounds.push(games);arr=[arr[0],arr[ringSize-1],...arr.slice(1,ringSize-1)]}
  const reverse=rounds.map(g=>g.map(x=>({home:x.away,away:x.home})));
  const sets=meetingsForLeague(name);let out=[...rounds,...reverse];if(sets===4)out=[...out,...rounds,...reverse];return out.flat();
 }
@@ -556,8 +558,8 @@ function settleLeagueSnapshot(name){
  const clubs=playableClubsForLeague(name);if(clubs.length<2)return null;
  let snap=state.competitionStates[name];
  if(!snap||snap.season!==state.season||!Array.isArray(snap.fixtures)||snap.fixtures.length!==generateFixturesForLeague(clubs,name).length){snap={season:state.season,matchday:0,fixtures:generateFixturesForLeague(clubs,name),table:makeTableForClubs(clubs),results:[]};}
- while(snap.matchday<(clubs.length-1)*meetingsForLeague(name)){
-  const n=clubs.length,round=snap.fixtures.slice(snap.matchday*n/2,(snap.matchday+1)*n/2);if(!round.length)break;
+ while(snap.matchday<matchdaysForClubCount(clubs.length,name)){
+  const perRound=Math.floor(clubs.length/2),round=snap.fixtures.slice(snap.matchday*perRound,(snap.matchday+1)*perRound);if(!round.length)break;
   const rs=round.map(simulateFixture);rs.forEach(r=>applyResultToTable(snap.table,r));snap.results.push(rs);snap.matchday++;
  }
  state.competitionStates[name]=snap;return standingsForTable(snap.table);
@@ -729,8 +731,8 @@ function home(){
  <div class="card"><h3>Promotion & relegation</h3><p class="sub">The top tier exchanges two clubs with the champions of the FBiH and RS first divisions. Lower-tier promotion routes are still being added.</p>${(state.promotionHistory||[]).slice(-1).map(x=>`<div class="notice">${x.season}/${String(x.season+1).slice(-2)}: ${x.changes.map(c=>`${c.club}: ${c.from} → ${c.to}`).join(" • ")}</div>`).join("")}</div><div class="card"><h3>Transfer market</h3><div class="sub">${transferStatus().label}</div></div><div class="card"><h3>Latest matchday</h3>${latestRoundHTML()}</div>
  <div class="card"><h3>Real 2026/27 data</h3><p class="sub">Club/player names are sourced from current 2026/27 federation and squad listings. OVR is a game attribute, not an official player rating. Prva liga FBiH starting XIs are based on published 2026/27 match lineups.</p></div><div class="card"><h3>Season engine</h3><p class="sub">Every populated league advances one round per world matchday, with separate saved fixtures, tables and results. Premijer Liga BiH uses 36 matchdays (four meetings per opponent); other populated leagues retain their two-meeting format.</p></div>`
 }
-function fixtureForRound(round){const n=leagueClubs().length;return state.fixtures.slice(round*n/2,(round+1)*n/2)}
-function nextOpponent(){const total=seasonMatchdays();if(state.matchday>=total)return"Season complete";const f=fixtureForRound(state.matchday).find(x=>x.home===state.club||x.away===state.club);if(!f)return"Schedule pending";return`${f.home===state.club?"Home":"Away"} • ${f.home===state.club?f.away:f.home}`}
+function fixtureForRound(round){const perRound=Math.floor(leagueClubs().length/2);return state.fixtures.slice(round*perRound,(round+1)*perRound)}
+function nextOpponent(){const total=seasonMatchdays();if(state.matchday>=total)return"Season complete";const f=fixtureForRound(state.matchday).find(x=>x.home===state.club||x.away===state.club);if(!f)return leagueClubs().includes(state.club)?"Bye round":"Schedule pending";return`${f.home===state.club?"Home":"Away"} • ${f.home===state.club?f.away:f.home}`}
 function poissonish(lambda){const rate=Math.max(0,Number(lambda)||0),limit=Math.exp(-rate);let product=1,count=0;do{count++;product*=Math.random()}while(product>limit);return count-1}
 function simulateFixture(f,referee=assignReferee()){
  const xg=expectedGoalsForFixture(f.home,f.away,referee);
@@ -1062,7 +1064,12 @@ function playMatch(){
  normalizeXI();
  const activeSnap=ensureCompetitionSnapshot(state.league);
  if(activeSnap){state.matchday=activeSnap.matchday;state.fixtures=activeSnap.fixtures;state.table=activeSnap.table;state.results=activeSnap.results;}
- const round=fixtureForRound(state.matchday),my=round.find(x=>x.home===state.club||x.away===state.club);if(!my){state.jobNotice="No fixture was found for this matchday. Your saved league schedule was preserved.";save();render();return;}
+ const round=fixtureForRound(state.matchday),my=round.find(x=>x.home===state.club||x.away===state.club);if(!my){
+  if(leagueClubs().includes(state.club)&&round.length===Math.floor(leagueClubs().length/2)){
+   const byeResults=round.map(f=>simulateFixture(f));byeResults.forEach(r=>{applyResult(r);updatePlayerStatsForResult(r)});state.results.push(byeResults);state.matchday++;advanceOtherLeaguesOneRound(state.league);if(transferStatus().type==="mid")runAITransferTick("mid");const row=state.table[state.club];state.points=row?.pts||state.points;state.jobBoardMD=-1;state.jobNotice="Your club has a bye this matchday. The other league fixtures have been simulated.";saveActiveCompetition();if(state.matchday>=seasonMatchdays()){save();finishSeason();return;}save();render();return;
+  }
+  state.jobNotice="No fixture was found for this matchday. Your saved league schedule was preserved.";save();render();return;
+ }
  const referee=assignReferee(),results=round.map(f=>simulateFixture(f,f.home===my.home&&f.away===my.away?referee:assignReferee())),idx=results.findIndex(r=>r.home===my.home&&r.away===my.away);
  const starters=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
  const avg=starters.length?starters.reduce((a,p)=>a+p.ovr,0)/starters.length:teamRating(state.club);
