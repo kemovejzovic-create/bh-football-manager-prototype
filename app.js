@@ -48,6 +48,10 @@ const TEAM_RATING={"FK Sarajevo":72,"FK Željezničar":71,"FK Borac Banja Luka":
 const DEFAULT_RATING=56;
 const SAVE_KEY="bhfm";
 const SAVE_BACKUP_KEY="bhfm_backup";
+const SAVE_SLOT_COUNT=5;
+const SAVE_SLOT_PREFIX="bhfm_slot_";
+const SAVE_SLOT_BACKUP_PREFIX="bhfm_slot_backup_";
+const ACTIVE_SLOT_KEY="bhfm_active_slot";
 const SAVE_VERSION=9;
 const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,lossStreak:0,managerFired:false,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],transferOffers:[],regionalPlayers:[],regionalMarketSeeded:false,aiBudgets:{},cup:null,playerStats:{},seasonHistory:[],achievements:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,pendingMatch:null,jobNotice:"",celebration:null,saveVersion:SAVE_VERSION};
 function isObject(value){return !!value&&typeof value==="object"&&!Array.isArray(value)}
@@ -110,24 +114,82 @@ function normalizeSavedState(raw){
 function readSave(key){
  try{const raw=localStorage.getItem(key);if(!raw)return null;return normalizeSavedState(JSON.parse(raw));}catch(e){return null;}
 }
+function slotSaveKey(slot){return `${SAVE_SLOT_PREFIX}${slot}`}
+function slotBackupKey(slot){return `${SAVE_SLOT_BACKUP_PREFIX}${slot}`}
+function migrateLegacySaveToSlotOne(){
+ try{
+  if(localStorage.getItem(slotSaveKey(1)))return;
+  const legacy=localStorage.getItem(SAVE_KEY),backup=localStorage.getItem(SAVE_BACKUP_KEY);
+  let normalized=null,backupState=null;
+  try{if(legacy)normalized=normalizeSavedState(JSON.parse(legacy))}catch(e){}
+  try{if(backup)backupState=normalizeSavedState(JSON.parse(backup))}catch(e){}
+  if(!normalized)normalized=backupState;if(!normalized)return;
+  localStorage.setItem(slotSaveKey(1),JSON.stringify(normalized));
+  if(backupState)localStorage.setItem(slotBackupKey(1),JSON.stringify(backupState));
+ }catch(e){/* Keep legacy data intact if slot migration cannot be written. */}
+}
+function readCareerSlot(slot){return readSave(slotSaveKey(slot))||readSave(slotBackupKey(slot))}
+let activeSaveSlot=(()=>{try{const n=Number(localStorage.getItem(ACTIVE_SLOT_KEY));return Number.isInteger(n)&&n>=1&&n<=SAVE_SLOT_COUNT?n:1}catch(e){return 1}})();
 function loadInitialState(){
  try{
-  const primary=readSave(SAVE_KEY);
+  migrateLegacySaveToSlotOne();
+  const primary=readSave(slotSaveKey(activeSaveSlot));
   if(primary)return primary;
-  const backup=readSave(SAVE_BACKUP_KEY);
+  const backup=readSave(slotBackupKey(activeSaveSlot));
   if(backup){window.__bhfmSaveRecovered=true;return backup;}
  }catch(e){}
+ window.__bhfmEmptySlot=true;
  return JSON.parse(JSON.stringify(DEFAULT_STATE));
 }
 let state=loadInitialState();
 let selectedTacticPlayerId=null;
 let matchPlaybackTimer=null;
+let showingCareerCreator=false;
+const BASE_LEAGUES=JSON.parse(JSON.stringify(leagues));
 function applyLeagueMembership(){
  if(state.leagueMembership&&typeof state.leagueMembership==="object"){
   Object.entries(state.leagueMembership).forEach(([name,clubs])=>{if(leagues[name]&&Array.isArray(clubs))leagues[name]=clubs.slice();});
  }
 }
 function persistLeagueMembership(){state.leagueMembership=Object.fromEntries(Object.entries(leagues).map(([k,v])=>[k,v.slice()]));}
+function restoreBaseLeagues(){Object.keys(leagues).forEach(name=>delete leagues[name]);Object.assign(leagues,JSON.parse(JSON.stringify(BASE_LEAGUES)));}
+function slotCareerLabel(slot){
+ const saved=readCareerSlot(slot);return saved?`Slot ${slot} · ${saved.club} · ${saved.season}/${String(saved.season+1).slice(-2)}`:`Slot ${slot} · Empty`;
+}
+function careerSlotControls(){
+ const options=Array.from({length:SAVE_SLOT_COUNT},(_,i)=>{const slot=i+1;return `<option value="${slot}" ${slot===activeSaveSlot?"selected":""}>${slotCareerLabel(slot)}</option>`}).join("");
+ return `<div class="row" style="margin-top:10px"><label for="careerSlot" class="sub">CAREER SLOT</label><select id="careerSlot" aria-label="Career slot" onchange="switchCareerSlot(Number(this.value))">${options}</select><button onclick="beginNewCareer()">New Career</button></div>`;
+}
+function pauseCareerBeforeLeaving(){
+ if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}
+ if(state.pendingMatch?.playback&&!state.pendingMatch.playback.paused){state.pendingMatch.playback.paused=true;state.pendingMatch.playback.tactical=false;}
+}
+function switchCareerSlot(slot){
+ if(!Number.isInteger(slot)||slot<1||slot>SAVE_SLOT_COUNT||slot===activeSaveSlot)return;
+ pauseCareerBeforeLeaving();
+ if(!window.__bhfmEmptySlot)save();
+ activeSaveSlot=slot;try{localStorage.setItem(ACTIVE_SLOT_KEY,String(slot))}catch(e){}
+ restoreBaseLeagues();
+ const primary=readSave(slotSaveKey(slot)),saved=primary||readSave(slotBackupKey(slot));state=saved||JSON.parse(JSON.stringify(DEFAULT_STATE));
+ window.__bhfmEmptySlot=!saved;window.__bhfmSaveRecovered=!!saved&&!primary;showingCareerCreator=false;
+ applyLeagueMembership();
+ if(saved)initClub();
+ if(window.__bhfmSaveRecovered)alert(`Slot ${slot}'s main save could not be read, so its most recent backup was restored.`);
+ render();
+}
+function beginNewCareer(){pauseCareerBeforeLeaving();if(!window.__bhfmEmptySlot)save();showingCareerCreator=true;render()}
+function careerStartPage(){
+ const currentClubs=[...new Set(Object.values(leagues).flat())].filter(c=>c&&!String(c).startsWith("TBD")&&!String(c).includes("regional"));
+ const options=currentClubs.map(club=>`<option ${club===state.club?"selected":""}>${club}</option>`).join("");
+ document.getElementById("app").innerHTML=`<div class="card"><div class="sub">Career slot ${activeSaveSlot} of ${SAVE_SLOT_COUNT}</div><h2>${window.__bhfmEmptySlot?"Start a new career":"Create a new career"}</h2><p class="sub">Each slot has its own club, squads, season and progress. Other slots stay saved separately.</p><label for="newCareerClub">Starting club</label><select id="newCareerClub" style="width:100%;margin:8px 0 14px">${options}</select><button class="primary" style="width:100%" onclick="startNewCareer(document.getElementById('newCareerClub').value)">Start career in slot ${activeSaveSlot}</button>${window.__bhfmEmptySlot?"":'<button style="width:100%;margin-top:8px" onclick="showingCareerCreator=false;render()">Cancel</button>'}</div>`;
+}
+function startNewCareer(club){
+ if(!BASE_LEAGUES||!Object.values(BASE_LEAGUES).some(clubs=>clubs.includes(club)))return;
+ if(!window.__bhfmEmptySlot&&!confirm(`Replace the career in slot ${activeSaveSlot}? Other slots will be kept.`))return;
+ try{localStorage.removeItem(slotSaveKey(activeSaveSlot));localStorage.removeItem(slotBackupKey(activeSaveSlot))}catch(e){}
+ restoreBaseLeagues();state=JSON.parse(JSON.stringify(DEFAULT_STATE));state.club=club;state.league=Object.keys(leagues).find(name=>leagues[name].includes(club))||DEFAULT_STATE.league;
+ window.__bhfmEmptySlot=false;showingCareerCreator=false;applyLeagueMembership();initClub();state.tab="Home";save();render();
+}
 applyLeagueMembership();
 
 function clonePlayer(p){return {...p};}
@@ -639,10 +701,10 @@ function initSeason(force=false){
 }
 function save(){
  try{persistLeagueMembership();
-  const existing=localStorage.getItem(SAVE_KEY);
-  if(existing){try{const parsed=JSON.parse(existing);if(normalizeSavedState(parsed))localStorage.setItem(SAVE_BACKUP_KEY,existing);}catch(e){/* Never replace a good backup with corrupt data. */}}
+  const key=slotSaveKey(activeSaveSlot),backupKey=slotBackupKey(activeSaveSlot),existing=localStorage.getItem(key);
+  if(existing){try{const parsed=JSON.parse(existing);if(normalizeSavedState(parsed))localStorage.setItem(backupKey,existing);}catch(e){/* Never replace a good backup with corrupt data. */}}
   state.saveVersion=SAVE_VERSION;
-  localStorage.setItem(SAVE_KEY,JSON.stringify(state));
+  localStorage.setItem(key,JSON.stringify(state));
   state.saveError=false;
   return true;
  }catch(e){
@@ -703,6 +765,9 @@ function ensureSeasonReady(){
   }
 }
 function render(){
+ const controls=document.getElementById("careerSlotControls");if(controls)controls.innerHTML=careerSlotControls();
+ if(window.__bhfmEmptySlot||showingCareerCreator){document.getElementById("tabs").style.display="none";careerStartPage();return;}
+ document.getElementById("tabs").style.display="flex";
  if(state.tab!=="Squad & Tactics")selectedTacticPlayerId=null;
  ensureSeasonReady();
  if(state.matchday>=seasonMatchdays()&&!state.seasonReport){ finishSeason(); return; }
@@ -843,6 +908,13 @@ function generateMatchReport(r,referee=assignReferee()){
    add(minute,"goal",`${p.name} scores for ${r.away}${a?` after a pass from ${a.name}`:""}.`,r.away,p);
  }
 
+ // A user-side injury creates an in-match stoppage where the manager must replace the player.
+ const userLineup=r.home===state.club?homeXI:r.away===state.club?awayXI:[];
+ if(userLineup.length&&Math.random()<.14){
+   const injured=pickPlayer(userLineup.filter(p=>p.pos!=="GK"),{ATT:1,MID:2,DEF:2});
+   if(injured){const minute=matchMinute(usedMinutes);usedMinutes.push(minute);add(minute,"injury",`❌ ${injured.name} is injured and cannot continue.`,state.club,injured);}
+ }
+
  // 2–5 cards, weighted toward midfield/defenders.
  const cardCount=Math.max(0,Math.min(6,Math.floor(Math.random()*4)+referee.strictness));
  for(let i=0;i<cardCount;i++){
@@ -963,7 +1035,7 @@ function updatePlayerStatsFromReport(report,competition="league"){
    const appearanceRows=Array.isArray(report.appearances?.[club])?report.appearances[club].map(x=>typeof x==="string"?{player:lineup.find(p=>p.id===x),minutes:90,starts:true}:x).filter(x=>x.player):lineup.map(player=>({player,minutes:90,starts:true}));
    appearanceRows.forEach(({player,minutes,starts})=>{
      const k=statKey(club,player,competition);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,player,competition);
-     state.playerStats[k].apps++;if(starts)state.playerStats[k].starts++;state.playerStats[k].minutes+=Number(minutes||90);
+     state.playerStats[k].apps++;if(starts)state.playerStats[k].starts++;state.playerStats[k].minutes+=Number(minutes??90);
    });
    scorers.forEach(x=>{
      const k=statKey(club,x.player,competition);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,x.player,competition);
@@ -973,7 +1045,8 @@ function updatePlayerStatsFromReport(report,competition="league"){
        state.playerStats[ak].assists++;
      }
    });
-   if(conceded===0)lineup.filter(p=>p.pos==="GK"||p.pos==="DEF").forEach(p=>{
+   const playedMinutes=new Map(appearanceRows.map(x=>[String(x.player.id),Number(x.minutes??90)]));
+   if(conceded===0)appearanceRows.map(x=>x.player).filter(p=>(p.pos==="GK"||p.pos==="DEF")&&(playedMinutes.get(String(p.id))||0)>=30).forEach(p=>{
      const k=statKey(club,p,competition);if(!state.playerStats[k])state.playerStats[k]=blankPlayerStat(club,p,competition);
      state.playerStats[k].cleanSheets++;
    });
@@ -1040,15 +1113,25 @@ function advanceLiveMatchEvent(){
  const pending=state.pendingMatch,pb=pending?.playback;
  if(!pending||!pb||!(["first","second"].includes(pending.phase)))return;
   pb.goalOverlay=null;
-  const event=liveMatchEvents(pending)[pb.index];
+ const event=liveMatchEvents(pending)[pb.index];
  if(!event){if(pending.phase==="first"){pending.phase="halftime";pb.paused=true;}else completePendingMatch();save();render();return;}
+ if(event.type==="injury"&&(pending.substitutions||[]).length>=5){event.type="chance";event.text=`${event.player} receives treatment and is able to continue.`;}
  pb.index++;pb.shown=Array.isArray(pb.shown)?pb.shown:[];pb.shown.push(event);
  if(event.type==="goal"){
   const side=event.team===pending.fixture.home?0:1;pb.score=Array.isArray(pb.score)?pb.score:[0,0];pb.score[side]++;
   pb.goalOverlay={event,team:event.team,score:pb.score.slice()};
  }
  if(event.type==="half"){pending.phase="halftime";pb.paused=true;}
- if(event.type==="red")dismissPlayerForMatch(pending,event);
+ if(event.type==="red"){
+  dismissPlayerForMatch(pending,event);
+  if(event.team===state.club){pb.paused=true;pb.tactical=true;pending.interruption={type:"red",player:event.player,minute:event.minute};}
+ }
+ if(event.type==="injury"&&event.team===state.club){
+  pending.injuries=Array.isArray(pending.injuries)?pending.injuries:[];
+  const player=(pending.startingXI||[]).find(p=>p.name===event.player)||state.players.find(p=>p.name===event.player);
+  if(player&&!pending.injuries.some(x=>String(x.id)===String(player.id)))pending.injuries.push({id:String(player.id),name:player.name,minute:event.minute});
+  pending.injuryPendingId=player?String(player.id):null;pb.paused=true;pb.tactical=true;
+ }
  if(event.type==="full"&&pending.forfeitLoser){pb.score=[pending.finalReport?.hg??pending.firstHalf.hg,pending.finalReport?.ag??pending.firstHalf.ag];if(pending.phase==="first")completeFirstHalfForfeit(pending);else completePendingMatch();return;}
  save();render();
 }
@@ -1066,18 +1149,24 @@ function applyMatchSubstitution(outId,inId,pending=state.pendingMatch){
  if(!pending||!outId||!inId||String(outId)===String(inId))return false;
  const slot=state.xi.findIndex(id=>String(id)===String(outId));
  const incoming=state.players.find(p=>String(p.id)===String(inId));
- if(slot<0||!incoming||state.xi.some(id=>String(id)===String(inId))||(pending.dismissals||[]).some(d=>d.team===state.club&&String(d.id)===String(inId)))return false;
+ const injured=(pending.injuries||[]).some(x=>String(x.id)===String(outId));
+ if(slot<0||!incoming||state.xi.some(id=>String(id)===String(inId))||(pending.dismissals||[]).some(d=>d.team===state.club&&String(d.id)===String(inId))||(pending.injuries||[]).some(x=>String(x.id)===String(inId)))return false;
+ if((pending.substitutions||[]).length>=5)return false;
+ if(pending.injuryPendingId&&String(pending.injuryPendingId)!==String(outId))return false;
  state.xi[slot]=incoming.id;
  pending.substitutions=Array.isArray(pending.substitutions)?pending.substitutions:[];
  const outgoing=state.players.find(p=>String(p.id)===String(outId));
  pending.substitutions.push({outId:String(outId),inId:String(inId),outName:outgoing?.name||"Player",inName:incoming.name,minute:matchMinuteNow(pending)});
+ if(injured)pending.injuryPendingId=null;
  return true;
 }
 function saveLiveTacticsAndResume(){
  const pending=state.pendingMatch,pb=pending?.playback;if(!pending||!pb)return;
  state.mentality=document.getElementById("liveTactic")?.value||state.mentality;
  const outId=document.getElementById("liveSubOut")?.value,inId=document.getElementById("liveSubIn")?.value;
- if(outId&&inId)applyMatchSubstitution(decodeURIComponent(outId),decodeURIComponent(inId),pending);
+ if(outId&&inId){if(!applyMatchSubstitution(decodeURIComponent(outId),decodeURIComponent(inId),pending))return;}
+ if(pending.injuryPendingId)return;
+ pending.interruption=null;
  pb.paused=false;pb.tactical=false;save();render();
 }
 function calculateMatchRatings(report,players){
@@ -1101,13 +1190,18 @@ function matchTacticsPanel(p,choices={},prefix="live"){
  const starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId)));
  (p.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>unavailable.add(String(d.id)));
+ (p.injuries||[]).forEach(x=>unavailable.add(String(x.id)));
  const bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id)));
  const booked=bookedPlayersForPendingMatch(p);
  const tacticId=prefix==="live"?"liveTactic":"htTactic";
  const outId=prefix==="live"?"liveSubOut":"htSubOut";
  const inId=prefix==="live"?"liveSubIn":"htSubIn";
  const mentality=choices.tactic||state.mentality||"Balanced";
- return `<div class="card"><h3>${prefix==="live"?"Match tactics":"Second-half tactics"}</h3><label>Team mentality</label><select id="${tacticId}" style="width:100%;margin:6px 0 12px">${["Ultra Defensive","Defensive","Balanced","Counter-Attack","Tiki-Taka","Attacking"].map(x=>`<option ${mentality===x?"selected":""}>${x}</option>`).join("")}</select><label>Substitute (optional)</label><div class="sub">Every player currently on the bench is listed with their position.</div><select id="${outId}" style="width:100%;margin:6px 0 8px"><option value="">Player to replace</option>${starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select><select id="${inId}" style="width:100%;margin:0 0 12px"><option value="">Player to bring on</option>${bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select>${prefix==="live"?'<button class="primary" style="width:100%" onclick="saveLiveTacticsAndResume()">Apply & resume match</button>':""}</div>`;
+ const injuredIds=new Set((p.injuries||[]).map(x=>String(x.id)));
+ const injuryPending=!!p.injuryPendingId,subLimit=(p.substitutions||[]).length>=5;
+ const outOptions=starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}" ${injuryPending&&String(x.id)===String(p.injuryPendingId)?"selected":""} ${injuryPending&&String(x.id)!==String(p.injuryPendingId)?"disabled":""}>${x.name}${injuredIds.has(String(x.id))?" ❌":""}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("");
+ const inOptions=bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("");
+ return `<div class="card"><h3>${injuryPending?"Injury stoppage":p.interruption?.type==="red"?"Red-card stoppage":prefix==="live"?"Match tactics":"Second-half tactics"}</h3>${injuryPending?`<div class="notice">❌ ${p.injuries?.find(x=>String(x.id)===String(p.injuryPendingId))?.name||"The injured player"} cannot continue. A substitution is required.</div>`:""}<label>Team mentality</label><select id="${tacticId}" style="width:100%;margin:6px 0 12px">${["Ultra Defensive","Defensive","Balanced","Counter-Attack","Tiki-Taka","Attacking"].map(x=>`<option ${mentality===x?"selected":""}>${x}</option>`).join("")}</select><label>Substitute ${injuryPending?"(required)":"(optional)"}</label><div class="sub">${subLimit?"Five substitutions have been used.":"Every available bench player is listed."}</div><select id="${outId}" style="width:100%;margin:6px 0 8px" ${subLimit?"disabled":""}><option value="">${injuryPending?"Select injured player":"Player to replace"}</option>${outOptions}</select><select id="${inId}" style="width:100%;margin:0 0 12px" ${subLimit?"disabled":""}><option value="">Player to bring on</option>${inOptions}</select>${prefix==="live"?`<button class="primary" style="width:100%" onclick="saveLiveTacticsAndResume()">${injuryPending?"Replace injured player & resume":"Apply & resume match"}</button>`:""}</div>`;
 }
 function bookedPlayersForPendingMatch(p){
  if(!p)return new Set();
@@ -1123,6 +1217,10 @@ function matchRatingsMarkup(report,players,title){
 function skipLiveMatch(){
  const pending=state.pendingMatch;if(!pending)return;
  if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}
+ if(pending.injuryPendingId){
+  const outId=String(pending.injuryPendingId),unavailable=new Set([...(pending.substitutions||[]).map(s=>String(s.outId)),...(pending.dismissals||[]).filter(d=>d.team===state.club).map(d=>String(d.id)),...(pending.injuries||[]).map(x=>String(x.id))]),bench=state.players.filter(p=>!state.xi.some(id=>String(id)===String(p.id))&&!unavailable.has(String(p.id))).sort((a,b)=>b.ovr-a.ovr);
+  const replacement=bench[0];if(replacement)applyMatchSubstitution(outId,String(replacement.id),pending);
+ }
  if(pending.phase==="first")processShownDismissals(pending,pending.firstHalf?.events);
  if(pending.phase==="first"&&pending.firstHalf?.forfeitLoser){completeFirstHalfForfeit(pending);return;}
  if(pending.phase==="first"||pending.phase==="halftime")resumeSecondHalf();
@@ -1137,7 +1235,7 @@ function skipLiveMatch(){
  playback.goalOverlay=null;playback.paused=true;
  completePendingMatch();
 }
-function liveEventIcon(type){return type==="goal"?"⚽":type==="yellow"?"🟨":type==="red"?"🟥":type==="save"?"🧤":type==="chance"?"🔥":type==="shot"?"🎯":type==="penalty"?"🥅":type==="half"?"⏸️":type==="full"?"🏁":"•"}
+function liveEventIcon(type){return type==="goal"?"⚽":type==="yellow"?"🟨":type==="red"?"🟥":type==="injury"?"🏥":type==="save"?"🧤":type==="chance"?"🔥":type==="shot"?"🎯":type==="penalty"?"🥅":type==="half"?"⏸️":type==="full"?"🏁":"•"}
 function playMatch(){
  if(state.managerFired){state.tab="Jobs";state.jobNotice=`You were dismissed by ${state.club}. Apply for another club to continue your career.`;save();render();return;}
  if(state.pendingMatch){state.tab="Match Report";render();return;}
@@ -1296,7 +1394,7 @@ function matchReportPage(){
   (p.substitutions||[]).forEach(s=>{const player=state.players.find(x=>String(x.id)===String(s.inId));if(player&&!halfRatingPlayers.some(x=>String(x.id)===String(player.id)))halfRatingPlayers.push(player);});
   document.getElementById("app").insertAdjacentHTML("beforeend",matchRatingsMarkup(m,halfRatingPlayers,"Half-time player ratings"));
   const oldSub=document.getElementById("htSub");if(oldSub){oldSub.previousElementSibling?.remove();oldSub.remove();}
-  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId)));(p.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>unavailable.add(String(d.id)));const bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id))),starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
+  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId)));(p.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>unavailable.add(String(d.id)));(p.injuries||[]).forEach(x=>unavailable.add(String(x.id)));const bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id))),starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
   const booked=bookedPlayersForPendingMatch(p);
   document.getElementById("app").insertAdjacentHTML("beforeend",`<div class="card"><h3>Half-time substitutions</h3><div class="sub">All available bench players and positions are shown.</div><select id="htSubOut" style="width:100%;margin:8px 0"><option value="">Player to replace</option>${starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select><select id="htSubIn" style="width:100%"><option value="">Player to bring on</option>${bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select></div>`);
   return;
@@ -1306,7 +1404,7 @@ function matchReportPage(){
  const isHome=m.home===state.club, myScore=isHome?m.hg:m.ag, oppScore=isHome?m.ag:m.hg;
  const events=m.events.map(e=>{
    const label=e.minute===45?"45'":e.minute===90?"90'":`${e.minute}'`;
-   const icon=e.type==="goal"?"⚽":e.type==="yellow"?"🟨":e.type==="red"?"🟥":e.type==="save"?"🧤":e.type==="chance"?"🔥":e.type==="shot"?"🎯":e.type==="penalty"?"🥅":e.type==="half"?"⏸️":"🏁";
+   const icon=e.type==="goal"?"⚽":e.type==="yellow"?"🟨":e.type==="red"?"🟥":e.type==="injury"?"🏥":e.type==="save"?"🧤":e.type==="chance"?"🔥":e.type==="shot"?"🎯":e.type==="penalty"?"🥅":e.type==="half"?"⏸️":"🏁";
    return `<div class="row" style="padding:9px 0;border-bottom:1px solid var(--line);align-items:flex-start"><b style="min-width:42px">${label}</b><span>${icon} ${e.text}</span></div>`;
  }).join("");
  const sh=m.stats;
@@ -1542,8 +1640,8 @@ function sellPlayer(id){
  normalizeXI(); state.balance+=fee; state.transfersDone.push({name:p.name,from:state.club,to:"Sold",fee,season:state.season}); if(fee>=250000)addAchievement("major-sale",`Major sale: ${p.name}`,`${state.club} sold ${p.name} for €${Number(fee).toLocaleString()}.`,"💰",{season:state.season,club:state.club,fee,player:p.name});
  save();render();
 }
-function resetGame(){if(confirm("Reset local career? This also removes the local backup.")){localStorage.removeItem(SAVE_KEY);localStorage.removeItem(SAVE_BACKUP_KEY);location.reload()}}
-initClub();
-if(window.__bhfmSaveRecovered){save();alert("Your main save could not be read, so BH Football Manager Lite restored the most recent backup. Please check your career before continuing.");}
+function resetGame(){beginNewCareer()}
+if(!window.__bhfmEmptySlot)initClub();
+ if(window.__bhfmSaveRecovered){save();alert(`Career slot ${activeSaveSlot}'s main save could not be read, so its most recent backup was restored. Please check the career before continuing.`);}
 render();
 
