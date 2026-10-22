@@ -1019,6 +1019,9 @@ function resolveDisciplineEvents(report,previousEvents=[]){
  const events=[];let forfeit=null;
  for(const event of [...report.events].sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0))){
   if(forfeit)break;
+  // Once dismissed, a player cannot contribute to later saves, shots, chances,
+  // or other match events.
+  if(event.team&&event.player&&dismissed.has(keyFor(event)))continue;
   if(!event.team||!event.player||!(["yellow","red"].includes(event.type))){events.push(event);continue;}
   const key=keyFor(event);if(dismissed.has(key))continue;
   events.push(event);
@@ -1197,7 +1200,7 @@ function applyMatchSubstitution(outId,inId,pending=state.pendingMatch){
  const slot=state.xi.findIndex(id=>String(id)===String(outId));
  const incoming=state.players.find(p=>String(p.id)===String(inId));
  const injured=(pending.injuries||[]).some(x=>String(x.id)===String(outId));
- if(slot<0||!incoming||state.xi.some(id=>String(id)===String(inId))||(pending.dismissals||[]).some(d=>d.team===state.club&&String(d.id)===String(inId))||(pending.injuries||[]).some(x=>String(x.id)===String(inId)))return false;
+ if(slot<0||!incoming||playerUnavailable(incoming)||state.xi.some(id=>String(id)===String(inId))||(pending.dismissals||[]).some(d=>d.team===state.club&&String(d.id)===String(inId))||(pending.injuries||[]).some(x=>String(x.id)===String(inId)))return false;
  if((pending.substitutions||[]).length>=5)return false;
  if(pending.injuryPendingId&&String(pending.injuryPendingId)!==String(outId))return false;
  state.xi[slot]=incoming.id;
@@ -1242,7 +1245,7 @@ function matchTacticsPanel(p,choices={},prefix="live"){
  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId)));
  (p.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>unavailable.add(String(d.id)));
  (p.injuries||[]).forEach(x=>unavailable.add(String(x.id)));
- const bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id)));
+ const bench=state.players.filter(x=>!playerUnavailable(x)&&!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id)));
  const booked=bookedPlayersForPendingMatch(p);
  const tacticId=prefix==="live"?"liveTactic":"htTactic";
  const formationId=prefix==="live"?"liveFormation":"htFormation";
@@ -1270,7 +1273,7 @@ function skipLiveMatch(){
  const pending=state.pendingMatch;if(!pending)return;
  if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}
  if(pending.injuryPendingId){
-  const outId=String(pending.injuryPendingId),unavailable=new Set([...(pending.substitutions||[]).map(s=>String(s.outId)),...(pending.dismissals||[]).filter(d=>d.team===state.club).map(d=>String(d.id)),...(pending.injuries||[]).map(x=>String(x.id))]),bench=state.players.filter(p=>!state.xi.some(id=>String(id)===String(p.id))&&!unavailable.has(String(p.id))).sort((a,b)=>b.ovr-a.ovr);
+  const outId=String(pending.injuryPendingId),unavailable=new Set([...(pending.substitutions||[]).map(s=>String(s.outId)),...(pending.dismissals||[]).filter(d=>d.team===state.club).map(d=>String(d.id)),...(pending.injuries||[]).map(x=>String(x.id))]),bench=state.players.filter(p=>!playerUnavailable(p)&&!state.xi.some(id=>String(id)===String(p.id))&&!unavailable.has(String(p.id))).sort((a,b)=>b.ovr-a.ovr);
   const replacement=bench[0];if(replacement)applyMatchSubstitution(outId,String(replacement.id),pending);
  }
  if(pending.phase==="first")processShownDismissals(pending,pending.firstHalf?.events);
@@ -1312,7 +1315,7 @@ function playMatch(){
  const firstRaw=generateMatchReport({home:my.home,away:my.away,hg:homeFirst,ag:awayFirst},referee);
  const first=resolveDisciplineEvents(remapMatchSegment(firstRaw,1,45,"half"));
  results[idx]={home:my.home,away:my.away,hg:homeFirst,ag:awayFirst};
- state.pendingMatch={results,roundIndex:idx,fixture:{...my},firstHalf:first,forfeitLoser:first.forfeitLoser||null,dismissals:[],referee,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
+ state.pendingMatch={results,roundIndex:idx,fixture:{...my},firstHalf:first,forfeitLoser:first.forfeitLoser||null,dismissals:[],referee,startingFormation:state.formation,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
  state.lastMatch={...first,hg:homeFirst,ag:awayFirst,halfTime:true};
  state.tab="Match Report";save();render();
 }
@@ -1334,7 +1337,7 @@ function resumeSecondHalf(){
    normalizeXI();
    const starters=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
    const dismissed=new Set((pending.dismissals||[]).filter(d=>d.team===state.club).map(d=>String(d.id)));
-   const bench=state.players.filter(p=>!state.xi.includes(p.id)&&!dismissed.has(String(p.id)));
+   const bench=state.players.filter(p=>!playerUnavailable(p)&&!state.xi.includes(p.id)&&!dismissed.has(String(p.id)));
    let outgoing=null;
    if(choices.substitution==="attacking")outgoing=starters.filter(p=>p.pos==="DEF"||p.pos==="MID").sort((a,b)=>a.ovr-b.ovr)[0]||starters.sort((a,b)=>a.ovr-b.ovr)[0];
    else outgoing=starters.slice().sort((a,b)=>a.ovr-b.ovr)[0];
@@ -1406,6 +1409,7 @@ function completePendingMatch(){
   }else games[pending.roundIndex].winner=finalHome>finalAway?fixture.home:fixture.away;
   games.forEach((game,i)=>{if(i!==pending.roundIndex)updatePlayerStatsForResult(game,"cup");});
   updatePlayerAvailabilityAfterMatch(report,initialXI);
+  if(formations[pending.startingFormation])state.formation=pending.startingFormation;
   state.lastMatch=report;state.pendingMatch=null;
   finishCupRound(games);
   save();state.tab="Match Report";render();return;
@@ -1420,6 +1424,7 @@ function completePendingMatch(){
  report.ticketRevenue=fixture.home===state.club?gate.revenue:0;
  if(report.ticketRevenue)state.balance+=report.ticketRevenue;
  updatePlayerAvailabilityAfterMatch(report,initialXI);
+ if(formations[pending.startingFormation])state.formation=pending.startingFormation;
  state.lastMatch=report;state.pendingMatch=null;state.matchday++;
  advanceOtherLeaguesOneRound(state.league);
  if(transferStatus().type==="mid")runAITransferTick("mid");
@@ -1453,7 +1458,7 @@ function matchReportPage(){
   (p.substitutions||[]).forEach(s=>{const player=state.players.find(x=>String(x.id)===String(s.inId));if(player&&!halfRatingPlayers.some(x=>String(x.id)===String(player.id)))halfRatingPlayers.push(player);});
   document.getElementById("app").insertAdjacentHTML("beforeend",matchRatingsMarkup(m,halfRatingPlayers,"Half-time player ratings"));
   const oldSub=document.getElementById("htSub");if(oldSub){oldSub.previousElementSibling?.remove();oldSub.remove();}
-  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId)));(p.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>unavailable.add(String(d.id)));(p.injuries||[]).forEach(x=>unavailable.add(String(x.id)));const bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id))),starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
+  const unavailable=new Set((p.substitutions||[]).map(s=>String(s.outId)));(p.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>unavailable.add(String(d.id)));(p.injuries||[]).forEach(x=>unavailable.add(String(x.id)));const bench=state.players.filter(x=>!playerUnavailable(x)&&!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id))),starters=state.xi.map(id=>state.players.find(x=>String(x.id)===String(id))).filter(Boolean);
   const booked=bookedPlayersForPendingMatch(p);
   document.getElementById("app").insertAdjacentHTML("beforeend",`<div class="card"><h3>Half-time substitutions</h3><div class="sub">All available bench players and positions are shown.</div><select id="htSubOut" style="width:100%;margin:8px 0"><option value="">Player to replace</option>${starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select><select id="htSubIn" style="width:100%"><option value="">Player to bring on</option>${bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("")}</select></div>`);
   return;
@@ -1495,7 +1500,7 @@ function squad(){
  if(!state.players.length)initClub(); normalizeXI();
  const canSellPlayers=transferStatus().type!=="closed";
  let formation=formations[state.formation],mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||null}));
- const bench=state.players.filter(p=>!state.xi.includes(p.id));
+ const bench=state.players.filter(p=>!playerUnavailable(p)&&!state.xi.includes(p.id));
  const sourceLabel=p=>p.rosterSource==="match-sheet"?"Match sheet":p.rosterSource==="public-roster"?"Public roster":p.rosterSource==="generated"?"Generated depth":p.rosterSource==="regional-market"?`${p.nationality||"Regional"} market`:"Seeded roster";
    const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>{const status=Number(p.injuryMatches)>0?`🏥 Injured · ${p.injuryMatches} match${p.injuryMatches===1?"":"es"} left`:Number(p.suspensionMatches)>0?`🟥 Suspended · ${p.suspensionMatches} match${p.suspensionMatches===1?"":"es"} left`:"";return `<div class="player ${showSell?"":"tactic-bench-player"}" ${showSell?"":`draggable="true" onclick="selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}><span class="tactic-name ${String(selectedTacticPlayerId)===String(p.id)?"selected":""}" ${showSell?"":`onclick="event.stopPropagation();selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}>${Number(p.injuryMatches)>0?"❌ ":Number(p.suspensionMatches)>0?"🟥 ":""}${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs • ${sourceLabel(p)}${status?` • ${status}`:""}${Number(p.seasonYellows)>0?` • 🟨 ${p.seasonYellows}/5`:""}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11||!canSellPlayers?"disabled":""}>Sell</button>`:""}</div>`}).join("")}</div>`;
  document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div><div class="sub tactic-hint">Tap one player's name, then another to swap them. You can also drag a player onto a position.</div></div><div class="pitch" ondragover="allowTacticDrop(event)">${mapped.map((m,i)=>`<div class="mark tactic-mark ${m.p&&String(selectedTacticPlayerId)===String(m.p.id)?"selected":""}" style="left:${m.slot[1]}%;top:${m.slot[2]}%" tabindex="0" role="button" aria-label="${m.slot[0]}: ${m.p?m.p.name:"Empty"}" onclick="selectTacticSlot(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectTacticSlot(${i})}" ondragover="allowTacticDrop(event)" ondrop="dropTacticPlayer(event,${i})" ${m.p?`draggable="true" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(m.p.id))}'))"`:""}><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><button class="primary" onclick="autoPickXI()">Auto-pick</button><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.pos} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
@@ -1519,7 +1524,7 @@ function allowTacticDrop(event){event.preventDefault();if(event.dataTransfer)eve
 function dropTacticPlayer(event,index){event.preventDefault();event.stopPropagation();const id=event.dataTransfer.getData("text/plain");if(id)replaceXI(index,id);}
 function changeFormation(f){state.formation=f;selectedTacticPlayerId=null;normalizeXI();save();render()}
 function replaceXI(i,id){
- normalizeXI(); const player=state.players.find(p=>String(p.id)===String(id));if(!player)return;id=player.id;
+ normalizeXI(); const player=state.players.find(p=>String(p.id)===String(id));if(!player||playerUnavailable(player))return;id=player.id;
  const current=state.xi[i], other=state.xi.indexOf(id);
  if(other>=0 && other!==i){state.xi[other]=current;state.xi[i]=id}
  else {state.xi[i]=id}
