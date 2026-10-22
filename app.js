@@ -1171,6 +1171,16 @@ function matchMinuteNow(pending){
  const shown=pending.playback?.shown||[];const latest=shown.slice().reverse().find(e=>Number.isFinite(e.minute));
  return latest?.minute??(pending.phase==="second"?46:1);
 }
+function removeOffPitchDisciplineEvents(pending){
+ if(!pending)return;
+ const offAt=new Map();
+ (pending.substitutions||[]).forEach(s=>{
+  const player=[...(pending.startingXI||[]),...(state.players||[])].find(p=>String(p.id)===String(s.outId));
+  if(player)offAt.set(player.name,Math.min(offAt.get(player.name)??Infinity,Number(s.minute)||0));
+ });
+ const reports=[pending.firstHalf,pending.secondHalf,pending.finalReport].filter(Boolean);
+ reports.forEach(report=>{report.events=(report.events||[]).filter(e=>!(e.team===state.club&&["yellow","red"].includes(e.type)&&offAt.has(e.player)&&e.minute>=offAt.get(e.player)));});
+}
 function applyMatchSubstitution(outId,inId,pending=state.pendingMatch){
  if(!pending||!outId||!inId||String(outId)===String(inId))return false;
  const slot=state.xi.findIndex(id=>String(id)===String(outId));
@@ -1183,6 +1193,7 @@ function applyMatchSubstitution(outId,inId,pending=state.pendingMatch){
  pending.substitutions=Array.isArray(pending.substitutions)?pending.substitutions:[];
  const outgoing=state.players.find(p=>String(p.id)===String(outId));
  pending.substitutions.push({outId:String(outId),inId:String(inId),outName:outgoing?.name||"Player",inName:incoming.name,minute:matchMinuteNow(pending)});
+ removeOffPitchDisciplineEvents(pending);
  if(injured)pending.injuryPendingId=null;
  return true;
 }
@@ -1296,6 +1307,7 @@ function playMatch(){
 }
 function resumeSecondHalf(){
  const pending=state.pendingMatch;if(!pending)return;
+ removeOffPitchDisciplineEvents(pending);
  if(pending.firstHalf?.forfeitLoser){completeFirstHalfForfeit(pending);return;}
  processShownDismissals(pending,pending.firstHalf?.events);
  const choices=pending.secondHalfChoices||{tactic:"Attacking",talk:"Encourage",substitution:"none"};
@@ -1358,6 +1370,7 @@ function resumeSecondHalf(){
 }
 function completePendingMatch(){
  const pending=state.pendingMatch;if(!pending||!pending.finalReport)return;
+ removeOffPitchDisciplineEvents(pending);
  const report=pending.finalReport,fixture=pending.fixture;
  const initialXI=pending.startingXI||[],subLog=(pending.substitutions||[]).slice().sort((a,b)=>a.minute-b.minute);
  const endMinute=Number.isFinite(report.forfeitMinute)?report.forfeitMinute:90;
