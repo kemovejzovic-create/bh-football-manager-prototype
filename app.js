@@ -53,7 +53,7 @@ const SAVE_SLOT_PREFIX="bhfm_slot_";
 const SAVE_SLOT_BACKUP_PREFIX="bhfm_slot_backup_";
 const ACTIVE_SLOT_KEY="bhfm_active_slot";
 const SAVE_VERSION=9;
-const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:500000,points:0,played:0,wins:0,draws:0,losses:0,lossStreak:0,managerFired:false,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],transferOffers:[],regionalPlayers:[],regionalMarketSeeded:false,aiBudgets:{},cup:null,playerStats:{},seasonHistory:[],achievements:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,pendingMatch:null,jobNotice:"",celebration:null,saveVersion:SAVE_VERSION};
+const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:400000,points:0,played:0,wins:0,draws:0,losses:0,lossStreak:0,managerFired:false,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],transferOffers:[],regionalPlayers:[],regionalMarketSeeded:false,aiBudgets:{},cup:null,playerStats:{},seasonHistory:[],achievements:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,pendingMatch:null,jobNotice:"",celebration:null,saveVersion:SAVE_VERSION};
 function isObject(value){return !!value&&typeof value==="object"&&!Array.isArray(value)}
 function normalizeSavedState(raw){
  if(!isObject(raw))return null;
@@ -183,11 +183,22 @@ function careerStartPage(){
  const options=currentClubs.map(club=>`<option ${club===state.club?"selected":""}>${club}</option>`).join("");
  document.getElementById("app").innerHTML=`<div class="card"><div class="sub">Career slot ${activeSaveSlot} of ${SAVE_SLOT_COUNT}</div><h2>${window.__bhfmEmptySlot?"Start a new career":"Create a new career"}</h2><p class="sub">Each slot has its own club, squads, season and progress. Other slots stay saved separately.</p><label for="newCareerClub">Starting club</label><select id="newCareerClub" style="width:100%;margin:8px 0 14px">${options}</select><button class="primary" style="width:100%" onclick="startNewCareer(document.getElementById('newCareerClub').value)">Start career in slot ${activeSaveSlot}</button>${window.__bhfmEmptySlot?"":'<button style="width:100%;margin-top:8px" onclick="showingCareerCreator=false;render()">Cancel</button>'}</div>`;
 }
+function startingBalanceForLeague(league){
+ const balances={
+  "Kantonalna liga HNK":100000,
+  "Druga liga FBiH – Sjever":200000,"Druga liga FBiH – Centar":200000,"Druga liga FBiH – Zapad":200000,"Druga liga FBiH – Jug":200000,
+  "Druga liga RS – Zapad":200000,"Druga liga RS – Istok":200000,
+  "Prva liga FBiH":300000,"Prva liga RS":300000,
+  "Premijer Liga BiH":400000
+ };
+ return balances[league]??100000;
+}
 function startNewCareer(club){
  if(!BASE_LEAGUES||!Object.values(BASE_LEAGUES).some(clubs=>clubs.includes(club)))return;
  if(!window.__bhfmEmptySlot&&!confirm(`Replace the career in slot ${activeSaveSlot}? Other slots will be kept.`))return;
  try{localStorage.removeItem(slotSaveKey(activeSaveSlot));localStorage.removeItem(slotBackupKey(activeSaveSlot))}catch(e){}
  restoreBaseLeagues();state=JSON.parse(JSON.stringify(DEFAULT_STATE));state.club=club;state.league=Object.keys(leagues).find(name=>leagues[name].includes(club))||DEFAULT_STATE.league;
+ state.balance=startingBalanceForLeague(state.league);
  window.__bhfmEmptySlot=false;showingCareerCreator=false;applyLeagueMembership();initClub();state.tab="Home";save();render();
 }
 applyLeagueMembership();
@@ -1177,10 +1188,13 @@ function applyMatchSubstitution(outId,inId,pending=state.pendingMatch){
 }
 function saveLiveTacticsAndResume(){
  const pending=state.pendingMatch,pb=pending?.playback;if(!pending||!pb)return;
+ const formation=document.getElementById("liveFormation")?.value;
  state.mentality=document.getElementById("liveTactic")?.value||state.mentality;
  const outId=document.getElementById("liveSubOut")?.value,inId=document.getElementById("liveSubIn")?.value;
  if(outId&&inId){if(!applyMatchSubstitution(decodeURIComponent(outId),decodeURIComponent(inId),pending))return;}
  if(pending.injuryPendingId)return;
+ if(formations[formation])state.formation=formation;
+ normalizeXI();
  pending.interruption=null;
  pb.paused=false;pb.tactical=false;save();render();
 }
@@ -1209,6 +1223,7 @@ function matchTacticsPanel(p,choices={},prefix="live"){
  const bench=state.players.filter(x=>!state.xi.some(id=>String(id)===String(x.id))&&!unavailable.has(String(x.id)));
  const booked=bookedPlayersForPendingMatch(p);
  const tacticId=prefix==="live"?"liveTactic":"htTactic";
+ const formationId=prefix==="live"?"liveFormation":"htFormation";
  const outId=prefix==="live"?"liveSubOut":"htSubOut";
  const inId=prefix==="live"?"liveSubIn":"htSubIn";
  const mentality=choices.tactic||state.mentality||"Balanced";
@@ -1216,7 +1231,7 @@ function matchTacticsPanel(p,choices={},prefix="live"){
  const injuryPending=!!p.injuryPendingId,subLimit=(p.substitutions||[]).length>=5;
  const outOptions=starters.map(x=>`<option value="${encodeURIComponent(String(x.id))}" ${injuryPending&&String(x.id)===String(p.injuryPendingId)?"selected":""} ${injuryPending&&String(x.id)!==String(p.injuryPendingId)?"disabled":""}>${x.name}${injuredIds.has(String(x.id))?" ❌":""}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("");
  const inOptions=bench.map(x=>`<option value="${encodeURIComponent(String(x.id))}">${x.name}${booked.has(x.name)?" 🟨":""} • ${x.pos} • Rating ${x.ovr}</option>`).join("");
- return `<div class="card"><h3>${injuryPending?"Injury stoppage":p.interruption?.type==="red"?"Red-card stoppage":prefix==="live"?"Match tactics":"Second-half tactics"}</h3>${injuryPending?`<div class="notice">❌ ${p.injuries?.find(x=>String(x.id)===String(p.injuryPendingId))?.name||"The injured player"} cannot continue. A substitution is required.</div>`:""}<label>Team mentality</label><select id="${tacticId}" style="width:100%;margin:6px 0 12px">${["Ultra Defensive","Defensive","Balanced","Counter-Attack","Tiki-Taka","Attacking"].map(x=>`<option ${mentality===x?"selected":""}>${x}</option>`).join("")}</select><label>Substitute ${injuryPending?"(required)":"(optional)"}</label><div class="sub">${subLimit?"Five substitutions have been used.":"Every available bench player is listed."}</div><select id="${outId}" style="width:100%;margin:6px 0 8px" ${subLimit?"disabled":""}><option value="">${injuryPending?"Select injured player":"Player to replace"}</option>${outOptions}</select><select id="${inId}" style="width:100%;margin:0 0 12px" ${subLimit?"disabled":""}><option value="">Player to bring on</option>${inOptions}</select>${prefix==="live"?`<button class="primary" style="width:100%" onclick="saveLiveTacticsAndResume()">${injuryPending?"Replace injured player & resume":"Apply & resume match"}</button>`:""}</div>`;
+ return `<div class="card"><h3>${injuryPending?"Injury stoppage":p.interruption?.type==="red"?"Red-card stoppage":prefix==="live"?"Match tactics":"Second-half tactics"}</h3>${injuryPending?`<div class="notice">❌ ${p.injuries?.find(x=>String(x.id)===String(p.injuryPendingId))?.name||"The injured player"} cannot continue. A substitution is required.</div>`:""}<label>Formation</label><select id="${formationId}" style="width:100%;margin:6px 0 12px">${Object.keys(formations).map(x=>`<option value="${x}" ${(choices.formation||state.formation)===x?"selected":""}>${x}</option>`).join("")}</select><label>Team mentality</label><select id="${tacticId}" style="width:100%;margin:6px 0 12px">${["Ultra Defensive","Defensive","Balanced","Counter-Attack","Tiki-Taka","Attacking"].map(x=>`<option ${mentality===x?"selected":""}>${x}</option>`).join("")}</select><label>Substitute ${injuryPending?"(required)":"(optional)"}</label><div class="sub">${subLimit?"Five substitutions have been used.":"Every available bench player is listed."}</div><select id="${outId}" style="width:100%;margin:6px 0 8px" ${subLimit?"disabled":""}><option value="">${injuryPending?"Select injured player":"Player to replace"}</option>${outOptions}</select><select id="${inId}" style="width:100%;margin:0 0 12px" ${subLimit?"disabled":""}><option value="">Player to bring on</option>${inOptions}</select>${prefix==="live"?`<button class="primary" style="width:100%" onclick="saveLiveTacticsAndResume()">${injuryPending?"Replace injured player & resume":"Apply & resume match"}</button>`:""}</div>`;
 }
 function bookedPlayersForPendingMatch(p){
  if(!p)return new Set();
@@ -1284,6 +1299,8 @@ function resumeSecondHalf(){
  if(pending.firstHalf?.forfeitLoser){completeFirstHalfForfeit(pending);return;}
  processShownDismissals(pending,pending.firstHalf?.events);
  const choices=pending.secondHalfChoices||{tactic:"Attacking",talk:"Encourage",substitution:"none"};
+ if(formations[choices.formation])state.formation=choices.formation;
+ normalizeXI();
  const fixture=pending.fixture,first=pending.firstHalf;
  state.mentality=choices.tactic||"Attacking";
  let substitutionText="No substitutions at half-time.";
@@ -1407,6 +1424,7 @@ function matchReportPage(){
   const halfEvents=(Array.isArray(shown)&&shown.length?shown:m.events).map(e=>`<div class="live-event"><b class="live-minute">${e.minute}'</b><span class="live-icon">${liveEventIcon(e.type)}</span><span>${e.text}</span></div>`).join("");
   const matchContext=p.competition==="cup"?`Kup BiH • ${p.competitionLabel||state.cup?.roundName||"Cup tie"}`:`${state.league} • Matchday ${state.matchday+1}`;
   document.getElementById("app").innerHTML=`<div class="card"><div class="sub">${matchContext}</div><h2 style="text-align:center">HALF-TIME</h2><h2 style="text-align:center;margin:8px 0">${m.home} <span style="margin:0 12px">${m.hg}–${m.ag}</span> ${m.away}</h2><div class="notice">Referee: <b>${refereeSummary(m)}</b><div class="sub">The game profile affects goal rates and disciplinary decisions. It is simulated and does not describe the named official's real style.</div></div></div><div class="card"><h3>First-half commentary</h3><div class="live-feed" aria-live="polite">${halfEvents}</div></div><div class="card"><h3>Second-half tactics</h3><label>Team mentality</label><select id="htTactic" style="width:100%;margin:6px 0 12px"><option ${choices.tactic==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${choices.tactic==="Defensive"?"selected":""}>Defensive</option><option ${choices.tactic==="Balanced"?"selected":""}>Balanced</option><option ${choices.tactic==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${choices.tactic==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${choices.tactic==="Attacking"?"selected":""}>Attacking</option></select><label>Team talk</label><select id="htTalk" style="width:100%;margin:6px 0 12px"><option ${choices.talk==="Encourage"?"selected":""}>Encourage</option><option ${choices.talk==="Demand more"?"selected":""}>Demand more</option><option ${choices.talk==="Calm down"?"selected":""}>Calm down</option></select><label>Half-time substitution</label><select id="htSub" style="width:100%;margin:6px 0 12px"><option value="none" ${choices.substitution==="none"?"selected":""}>No substitution</option><option value="fresh" ${choices.substitution==="fresh"?"selected":""}>Replace lowest-rated starter with best available substitute</option><option value="attacking" ${choices.substitution==="attacking"?"selected":""}>Make an attacking change</option></select><button class="primary" style="width:100%" onclick="saveHalfTimeChoicesAndResume()">Apply changes & start second-half commentary</button><button class="danger" style="width:100%;margin-top:8px" onclick="skipLiveMatch()">Skip match</button><p class="sub">Your choices affect the second-half simulation. The matchday and league table are not committed until full-time.</p></div>`;
+  document.getElementById("app").insertAdjacentHTML("beforeend",`<div class="card"><label for="htFormation"><b>Second-half formation</b></label><select id="htFormation" style="width:100%;margin:6px 0 0">${Object.keys(formations).map(x=>`<option value="${x}" ${(choices.formation||state.formation)===x?"selected":""}>${x}</option>`).join("")}</select></div>`);
   const halfRatingPlayers=[...(p.startingXI||[])];
   (p.substitutions||[]).forEach(s=>{const player=state.players.find(x=>String(x.id)===String(s.inId));if(player&&!halfRatingPlayers.some(x=>String(x.id)===String(player.id)))halfRatingPlayers.push(player);});
   document.getElementById("app").insertAdjacentHTML("beforeend",matchRatingsMarkup(m,halfRatingPlayers,"Half-time player ratings"));
@@ -1446,7 +1464,7 @@ function matchReportPage(){
 function saveHalfTimeChoicesAndResume(){
  if(!state.pendingMatch)return;
  const outId=document.getElementById("htSubOut")?.value,inId=document.getElementById("htSubIn")?.value;
- state.pendingMatch.secondHalfChoices={tactic:document.getElementById("htTactic")?.value||"Attacking",talk:document.getElementById("htTalk")?.value||"Encourage",subOut:outId?decodeURIComponent(outId):null,subIn:inId?decodeURIComponent(inId):null,substitution:"none"};
+ state.pendingMatch.secondHalfChoices={formation:document.getElementById("htFormation")?.value||state.formation,tactic:document.getElementById("htTactic")?.value||"Attacking",talk:document.getElementById("htTalk")?.value||"Encourage",subOut:outId?decodeURIComponent(outId):null,subIn:inId?decodeURIComponent(inId):null,substitution:"none"};
  save();resumeSecondHalf();
 }
 function squad(){

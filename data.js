@@ -8,6 +8,7 @@ const leagues={
 "Druga liga FBiH – Centar":["FK Famos Hrasnica","NK Bosna Visoko","NK Krivaja Zavidovići","FK Rudar Breza","NK Natron Maglaj","FK Mladost Doboj Kakanj","FK Unis Vogošća","NK Vareš","NK Žepče 1919","FK Borac Jelah","NK Nemila","FK Mošćanica","FK Goražde","FK Baton Sarajevo","FK Liješeva","OFK Olimpik Novi Grad"],
 "Druga liga FBiH – Zapad":["NK Iskra 1946 Bugojno","NK Podgrmeč Sanski Most","NK Sloga Bosanska Otoka","FK Krajina Cazin","NK Rudar Kamengrad","NK Romari Vitez","NK Novi Travnik","NK Bajer 99 Ključ Velagići","FK Radnik Donji Vakuf","NK Kiseljak","FK Vitez","GNK Bratstvo Bosanska Krupa","NK Ključ","FK Rudar Han Bila"],
 "Druga liga FBiH – Jug":["HNK Neum","HNK Sloga Gornji Vakuf-Uskoplje","NK Troglav 1918 Livno","HNK Stolac","HNK Brotnjo Čitluk","HNK Kruševo","FK Klis","NK Ljubuški","HNK Višići","FK Turbina Jablanica","HNK Grude","NK Kamešnica Podhum","HNK Rama"],
+"Kantonalna liga HNK":["UŠS Fortuna Mostar","HNK Branitelj","NK Cim Mostar","FK Lokomotiva Mostar","FK Bjelopoljac","NK Međugorje","NK Neretva Čeljevo 2020","FK Blagaj","FK Iskra Stolac","NK Mostar"],
 "Druga liga RS – Zapad":["FK Polet 1926 Brod","FK Ljubić Prnjavor","FK Sloboda Mrkonjić Grad","FK Željezničar Banja Luka","FK Borac Šamac","OFK Brdo Hambarine","FK Gorica Šipovo","FK Dubrave","FK Bratstvo Kozinci","FK Proleter Teslić","FK Sloga Trn","FK Tekstilac Derventa","FK Modriča Alfa","FK Crni Vrh Jaružani"],
 "Druga liga RS – Istok":["FK Glasinac Sokolac","FK Guber Srebrenica","FK Drina HE Višegrad","FK Ilićka 01 Brčko","FK Mladost Gacko","FK Mladost Rogatica","FK Proleter Dvorovi","FK Stakorina Čajniče","FK Budućnost Pilica","FK Hercegovac Bileća","FK Podrinje Janja","FK Vlasenica","FK Jedinstvo Roćević","FK Rudar 1925 Ugljevik","FK Trnovica","FK Jedinstvo Brodac"]
 };
@@ -35,6 +36,7 @@ const competitionSources={
  "Druga liga FBiH – Centar":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-centar",
  "Druga liga FBiH – Zapad":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-zapad",
  "Druga liga FBiH – Jug":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-jug",
+ "Kantonalna liga HNK":"https://mobile.sportdc.net/league/6540-kantonalna-liga-hnk/teams",
  "Prva liga RS":"https://fsrs.org/sr-BA/vijesti-clanak/%D0%BE%D0%B4%D1%80%D0%B6%D0%B0%D0%BD%D0%B0-14-%D1%81%D1%98%D0%B5%D0%B4%D0%BD%D0%B8%D1%86%D0%B0-%D0%B8%D0%B7%D0%B2%D1%80%D1%88%D0%BD%D0%BE%D0%B3-%D0%BE%D0%B4%D0%B1%D0%BE%D1%80%D0%B0.html",
  "Druga liga RS – Zapad":"https://fsrs.org/sr-BA/takmicenja-regionalne-lige.html",
  "Druga liga RS – Istok":"https://fsrs.org/sr-BA/takmicenja-regionalne-lige.html"
@@ -130,6 +132,17 @@ const REAL_PRVA_SQUADS={
 // Sources and source type are attached per club below. Estimated game attributes
 // and broad positions are not official player ratings or registered positions.
 const SOURCED_LOWER_SQUADS={
+ // First-team names transcribed from the user's 2026 match-lineup screenshots,
+ // supplemented with full names where public Sofascore squad pages confirm them.
+ // OVR, ages, and unlisted squad depth remain game estimates, not screenshot data.
+ "FK Bjelopoljac":["J. Mušanović","Đenan Zolj","Hasan Vejzović","Đanis Gosto","Aldin Bečić","Fahrudin Fazlagić","Haris Ramadanović","Ensar Čevra","Adis Puce","Mustafa Šetka","Sandi Ljevo","B. Tipura","R. Turkić","N. Bešo","Safet Mulić","D. Macić","Samed Žuškić","Alem Brkan","T. Bilalt","Belmin Obradović"],
+ "NK Cim Mostar":["Z. Kukić","Z. Kukić (5)","D. Ferjančić","A. Blažević","M. Čubela","H. Šajin","M. Drežnjak","L. Udovičić","I. Čuljak","F. Zadro","A. Rezo","B. Tomić","F. Raspudić","L. Čuljak (4)","R. Krešić","I. Vrančić"],
+ "FK Blagaj":["A. Fišić","A. Cerovina","A. Batlak","N. Džiho","M. Memić","Faris Sadžak","B. Idriz","Adi Tanović","H. Tojaga","M. Bešo","Z. Vladavić","V. Subašić","E. Subašić","Bakir Mehić","Edin Subašić"],
+ "FK Iskra Stolac":["T. Đulić","A. Elezović","E. Teparić","M. Ajanić","A. Turajlić","Ismir Kekić","Eldin Bešo","A. Trbonja","E. Gološ","M. Malohodžić","Tarik Pehilj","Ermin Rokić","E. Pehlić","M. Teparić","K. Baljić","M. Đulić","Edin Pehlić","Hilmo Brzina"],
+ "NK Mostar":["M. Đurasović","M. Anđelić","M. Antunović","J. Bokšić","D. Majić","D. Marić","D. Pandža","M. Stanković","M. Pušić"],
+ "NK Neretva Čeljevo 2020":["Franjo Buntić","Željko Žobrak","Marin Krešić","Josip Popović","A. Jurković","J. Brajković","Edis Stiglić","Bruno Moro","Luka Zelenika","Danijel Azinović","Domagoj Stanković","G. Đorđić","Ivan Buntić","Ilija Kordić","Mario Karačić","Emil Jurković","Jakov Kalfić","Gabrijel Bule","Nikola Arar"],
+ "UŠS Fortuna Mostar":["Anes Agović","E. Pajić","Majdin Mešukić","Samir Zekić","Rijad Obradović","Kerim Dervić","Haris Ljeljak","Armin Idriz","A. Tanović","Nermin Haskić","Vedran Batlak","A. Agović","Bajram Bubalo","D. Gačanica","A. Sejfić","Haris Džemić","M. Mezit","Seid Behram","Džanin Gosto","Kenan Maksumić","Omar Kozić"],
+ "FK Lokomotiva Mostar":["D. Šegetalo","I. Bojčić","D. Hadrović","M. Bovan","A. Dedić","H. Ćehić","E. Jelovac","J. Bovan","B. Husović","D. Zukić","E. Kelecija","B. Bubalo","D. Kuko","T. Šipković","L. Čadin","N. Bešo","R. Turkić"],
  "FK Bratstvo Kozinci":["Djorde Nisic","Lazar Nisic","Danijel Cvetković","Stefan Golić","Jovica Materić","Duško Trkulja","Riste Bjelić","Nikola Freund","Nebojsa Stjepanovic","Ljubinko Latinović","Stefan Ćulibrk","Aleksandar Matić","Nemanja Ostojić","Milan Kos","Mladen Perić","Miroslav Zorić","Boris Ostojić","Pero Miladinovic","Srđan Ostojić","Aleksandar Dulić","Dean Popović","Miloš Radaković","Branislav Subotić","Dragan Drinić","Ognjen Dragičević","Aleksandar Popović","Ammar Jusufović","Saša Behara","Nemanja Petrović","Stefan Šervel"],
  "FK Gornji Rahić":["Vehid Mrkaljević","Senad Bošnjaković","Mehmed Bijelić","Fatmir Hercegovac","Eman Bekrić","Stefan Božić","Aldin Lišić","Almedin Ibrahimbašić","Hazim Hamidović","Abdulah Salkić","Amar Čaušević","Sead Bećirović","Arnel Ljuca","Arif Zečić","Ermin Kadrić","Arman Ibrišimović","Emrah Omić","Amel Softić","Radovan Vujić"],
  "NK Orahovica 74":["Enis Softić","Avdo Huskanović","Semir Dedić","Nermin Gazibegović","Haris Muratović","Muhamed Mujić","Emir Hasinović","Adin Mekić","Aziz Bešić","Dženid Gegić","Emir Mešanović","Elmir Kasumi","Arnel Osmanović","Enis Ahmetović","Elmin Mujić","Benjamin Osmanović","Ernad Bešić","Rasim Mešić","Hasan Fišić","Vedad Mešić"],
@@ -143,6 +156,14 @@ const SOURCED_LOWER_SQUADS={
  "FK Proleter Teslić":["Asim Bošnjak","Bogdan Perušinović","Saša Kuzmanović","Nemanja Đukarić","Stefan Đurić","David Simić","Želimir Nikolić","Aleksandar Sekulić","Vukota Simić","Tarik Osmić","Srđan Stanković","Srđan Radešić","Nemanja Pavlović"],
 };
 const SOURCED_LOWER_SQUAD_SOURCES={
+ "FK Bjelopoljac":"https://www.sofascore.com/football/team/fk-bjelopoljac-potoci/368406",
+ "NK Cim Mostar":"https://www.sofascore.com/football/team/nk-cim-mostar/376484",
+ "FK Blagaj":"https://www.sofascore.com/football/team/fk-blagaj/376488",
+ "FK Iskra Stolac":"https://www.sofascore.com/football/team/fk-iskra-stolac/376486",
+ "NK Mostar":"https://www.sofascore.com/football/team/nk-mostar/376481",
+ "NK Neretva Čeljevo 2020":"https://www.sofascore.com/football/team/nk-neretva-celjevo/475761",
+ "UŠS Fortuna Mostar":"https://www.sofascore.com/football/team/uss-fortuna-mostar/475763",
+ "FK Lokomotiva Mostar":"https://www.sofascore.com/football/team/fk-lokomotiva-mostar/376482",
  "FK Bratstvo Kozinci":"https://www.sofascore.com/football/team/fk-bratstvo-kozinci/478032",
  "FK Gornji Rahić":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-sjever/54212513",
  "NK Orahovica 74":"https://www.nsfbih.ba/takmicenja/druga-liga-fbih-sjever/54212513",
