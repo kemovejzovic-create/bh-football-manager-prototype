@@ -6,6 +6,11 @@ function applyRosterAudit(club,players){
  for(const item of audit.additions||[]){const [pos,name,age,ovr]=item;const key=normPlayerName(name);if(!byName.has(key)){const player={id:`${club}::${key}`,pos,name,age,ovr};players.push(player);byName.set(key,player);}}
  return players;
 }
+function applyBjelopoljacRatingUpdates(players){
+ const ratings=new Map([["dmacic",56],["szuskic",49],["samedzuskic",49],["safetmulic",56]]);
+ players.forEach(p=>{const rating=ratings.get(normPlayerName(p.name));if(rating!==undefined)p.ovr=rating;});
+ return players;
+}
 function generatedSquadName(club,index,hash,used=new Set()){
  const first=["Adnan","Ajdin","Alen","Amar","Anel","Armin","Benjamin","Dario","Edin","Eldin","Emir","Enes","Faruk","Haris","Ibrahim","Ivan","Jasmin","Josip","Kerim","Luka","Mahir","Marko","Matej","Mirza","Nermin","Nikola","Ognjen","Petar","Rijad","Samir","Tarik","Vedad","Vedran","Zlatan"];
  const last=["Alić","Babić","Begić","Božić","Čaušević","Delić","Hadžić","Halilović","Hasanović","Hodžić","Ibrahimović","Jovanović","Kadić","Kovačević","Križanac","Lazić","Marković","Mehić","Milić","Mujkić","Nikolić","Osmanović","Pavlović","Petrović","Popović","Ramić","Smajić","Stanić","Tadić","Tomić","Vasiljević","Vuković","Zec","Živković","Barišić","Ćosić","Đurić","Filipović","Grgić","Knežević","Lukić","Matić","Musić","Ristić","Šarić","Šehić","Šimić","Štulić","Turić","Vučić"];
@@ -30,7 +35,8 @@ function playersFor(club){
    players=Array.from({length:rosterSize},(_,i)=>{const name=sourced[i]||generatedSquadName(club,i,hash,usedNames);usedNames.add(name);return {id:i,pos:roles[i%roles.length],name,age:19+((hash+i*7)%17),ovr:48+((hash+i*11)%13),rosterSource:sourced[i]?(SOURCED_LOWER_SQUAD_TYPES[club]||"match-sheet"):"generated",sourceUrl:sourced[i]?SOURCED_LOWER_SQUAD_SOURCES[club]||null:null};});
   }
  }
- return applyRosterAudit(club,players);
+ players=applyRosterAudit(club,players);
+ return club==="FK Bjelopoljac"?applyBjelopoljacRatingUpdates(players):players;
 }
 
 const formations={
@@ -250,6 +256,11 @@ function ensureClubSquads(){
  // Apply verified broad-position corrections and missing-player additions to existing saves too.
  Object.entries(state.clubSquads).forEach(([club,squad])=>{if(Array.isArray(squad))state.clubSquads[club]=applyRosterAudit(club,squad);});
  if(Array.isArray(state.players))state.players=applyRosterAudit(state.club,state.players);
+ if(!Number(state.rosterRatingPatchVersion)){
+  state.clubSquads["FK Bjelopoljac"]=applyBjelopoljacRatingUpdates(state.clubSquads["FK Bjelopoljac"]||[]);
+  if(state.club==="FK Bjelopoljac")state.players=applyBjelopoljacRatingUpdates(state.players||[]);
+  state.rosterRatingPatchVersion=1;
+ }
 }
 
 function upgradeRealSquadsV012(){
