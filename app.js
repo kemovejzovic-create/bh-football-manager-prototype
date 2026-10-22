@@ -670,7 +670,7 @@ function startNextSeason(){
  state.transferTick=0; state.summerTick=0; state.transferPool=[]; state.transfersDone=[];state.transferOffers=[];
  ensureAIBudgets();Object.keys(state.aiBudgets).forEach(club=>{state.aiBudgets[club]+=Math.round(initialAIBudget(club)*.3)});
  state.cup=null; state.seasonReport=null; state.playerStats={};
- loadClubSquad(state.club); normalizeXI(); initPlayerStats();
+ loadClubSquad(state.club);state.players.forEach(p=>{p.seasonYellows=0});normalizeXI(); initPlayerStats();
  if(userPromotion&&userPromotion.to==="Premijer Liga BiH"){
   addAchievement("promotion","Promotion achieved",`${state.club} promoted to ${userPromotion.to}.`,"🎉",{season:state.season,club:state.club});
   showCelebration("promotion","Promoted!",`${state.club} have earned promotion to ${userPromotion.to}. A new challenge awaits!`,"🎉","Home");
@@ -713,17 +713,32 @@ function save(){
   return false;
  }
 }
+function playerUnavailable(p){return Number(p?.injuryMatches||0)>0||Number(p?.suspensionMatches||0)>0}
+function injuryDuration(){const roll=Math.random();return roll<.48?1:roll<.75?2:roll<.90?3:roll<.97?4:5}
 function normalizeXI(){
  const dismissed=new Set((state.pendingMatch?.dismissals||[]).filter(d=>d&&d.team===state.club&&d.id!=null).map(d=>String(d.id)));
- const valid=state.players.filter(p=>!dismissed.has(String(p.id))).map(p=>p.id), seen=new Set(), out=[];
+ const valid=state.players.filter(p=>!dismissed.has(String(p.id))&&!playerUnavailable(p)).map(p=>p.id), seen=new Set(), out=[];
  const targetCount=Math.min(Math.max(0,11-dismissed.size),valid.length);
  (Array.isArray(state.xi)?state.xi:[]).forEach(id=>{if(valid.includes(id)&&!seen.has(id)){seen.add(id);out.push(id)}});
  valid.forEach(id=>{if(out.length<targetCount&&!seen.has(id)){seen.add(id);out.push(id)}});
  state.xi=out;
 }
+function updatePlayerAvailabilityAfterMatch(report,startingXI){
+ (state.players||[]).forEach(p=>{p.injuryMatches=Math.max(0,Number(p.injuryMatches||0)-1);p.suspensionMatches=Math.max(0,Number(p.suspensionMatches||0)-1)});
+ const byName=new Map(state.players.map(p=>[p.name,p]));
+ (report.events||[]).filter(e=>e.team===state.club&&e.player).forEach(e=>{
+  const p=byName.get(e.player);if(!p)return;
+  if(e.type==="injury")p.injuryMatches=Math.max(Number(p.injuryMatches||0),injuryDuration());
+  if(e.type==="yellow"&&!e.secondYellow){p.seasonYellows=Number(p.seasonYellows||0)+1;if(p.seasonYellows%5===0)p.suspensionMatches=Math.max(Number(p.suspensionMatches||0),1)}
+  if(e.type==="red")p.suspensionMatches=Math.max(Number(p.suspensionMatches||0),e.secondYellow?1:(Math.random()<.55?2:3));
+ });
+ state.xi=(startingXI||[]).map(p=>state.players.find(x=>String(x.id)===String(p.id))?.id).filter(id=>id!==undefined);
+ state.xi=state.xi.filter(id=>{const p=state.players.find(x=>String(x.id)===String(id));return p&&!playerUnavailable(p)});
+ normalizeXI();
+}
 function autoPickXI(){
  const formation=formations[state.formation]||formations[DEFAULT_STATE.formation];
- const available=state.players.slice().sort((a,b)=>b.ovr-a.ovr||String(a.name).localeCompare(String(b.name)));
+ const available=state.players.filter(p=>!playerUnavailable(p)).slice().sort((a,b)=>b.ovr-a.ovr||String(a.name).localeCompare(String(b.name)));
  const picked=Array(formation.length).fill(null);
  const groupFor=position=>{
   if(position==="GK")return "GK";
@@ -1349,6 +1364,7 @@ function completePendingMatch(){
    games[pending.roundIndex].winner=winner;games[pending.roundIndex].penalties=penalties;
   }else games[pending.roundIndex].winner=finalHome>finalAway?fixture.home:fixture.away;
   games.forEach((game,i)=>{if(i!==pending.roundIndex)updatePlayerStatsForResult(game,"cup");});
+  updatePlayerAvailabilityAfterMatch(report,initialXI);
   state.lastMatch=report;state.pendingMatch=null;
   finishCupRound(games);
   save();state.tab="Match Report";render();return;
@@ -1362,6 +1378,7 @@ function completePendingMatch(){
  report.stadium=gate.name;report.stadiumCapacity=gate.capacity;report.attendance=gate.attendance;
  report.ticketRevenue=fixture.home===state.club?gate.revenue:0;
  if(report.ticketRevenue)state.balance+=report.ticketRevenue;
+ updatePlayerAvailabilityAfterMatch(report,initialXI);
  state.lastMatch=report;state.pendingMatch=null;state.matchday++;
  advanceOtherLeaguesOneRound(state.league);
  if(transferStatus().type==="mid")runAITransferTick("mid");
@@ -1438,7 +1455,7 @@ function squad(){
  let formation=formations[state.formation],mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||null}));
  const bench=state.players.filter(p=>!state.xi.includes(p.id));
  const sourceLabel=p=>p.rosterSource==="match-sheet"?"Match sheet":p.rosterSource==="public-roster"?"Public roster":p.rosterSource==="generated"?"Generated depth":p.rosterSource==="regional-market"?`${p.nationality||"Regional"} market`:"Seeded roster";
- const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>`<div class="player ${showSell?"":"tactic-bench-player"}" ${showSell?"":`draggable="true" onclick="selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}><span class="tactic-name ${String(selectedTacticPlayerId)===String(p.id)?"selected":""}" ${showSell?"":`onclick="event.stopPropagation();selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}>${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs • ${sourceLabel(p)}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11||!canSellPlayers?"disabled":""}>Sell</button>`:""}</div>`).join("")}</div>`;
+   const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>{const status=Number(p.injuryMatches)>0?`🏥 Injured · ${p.injuryMatches} match${p.injuryMatches===1?"":"es"} left`:Number(p.suspensionMatches)>0?`🟥 Suspended · ${p.suspensionMatches} match${p.suspensionMatches===1?"":"es"} left`:"";return `<div class="player ${showSell?"":"tactic-bench-player"}" ${showSell?"":`draggable="true" onclick="selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}><span class="tactic-name ${String(selectedTacticPlayerId)===String(p.id)?"selected":""}" ${showSell?"":`onclick="event.stopPropagation();selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}>${Number(p.injuryMatches)>0?"❌ ":Number(p.suspensionMatches)>0?"🟥 ":""}${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs • ${sourceLabel(p)}${status?` • ${status}`:""}${Number(p.seasonYellows)>0?` • 🟨 ${p.seasonYellows}/5`:""}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11||!canSellPlayers?"disabled":""}>Sell</button>`:""}</div>`}).join("")}</div>`;
  document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div><div class="sub tactic-hint">Tap one player's name, then another to swap them. You can also drag a player onto a position.</div></div><div class="pitch" ondragover="allowTacticDrop(event)">${mapped.map((m,i)=>`<div class="mark tactic-mark ${m.p&&String(selectedTacticPlayerId)===String(m.p.id)?"selected":""}" style="left:${m.slot[1]}%;top:${m.slot[2]}%" tabindex="0" role="button" aria-label="${m.slot[0]}: ${m.p?m.p.name:"Empty"}" onclick="selectTacticSlot(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectTacticSlot(${i})}" ondragover="allowTacticDrop(event)" ondrop="dropTacticPlayer(event,${i})" ${m.p?`draggable="true" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(m.p.id))}'))"`:""}><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><button class="primary" onclick="autoPickXI()">Auto-pick</button><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.pos} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
 function selectTacticPlayer(id){
  id=String(id);if(!state.players.some(p=>String(p.id)===id))return;
