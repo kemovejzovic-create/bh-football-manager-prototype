@@ -1,9 +1,75 @@
 function normPlayerName(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/gi,"").toLowerCase();}
+const PLAYER_ATTRIBUTE_KEYS=["pace","shooting","passing","dribbling","defending","physical","keeping"];
+const PLAYER_POSITION_GROUPS={GK:"GK",CB:"DEF",LB:"DEF",RB:"DEF",LWB:"DEF",RWB:"DEF",DM:"MID",CM:"MID",AM:"MID",RM:"MID",LM:"MID",LAM:"MID",RAM:"MID",ST:"ATT",CF:"ATT",RW:"ATT",LW:"ATT",SS:"ATT"};
+function detailedPositions(player){
+ estimatePlayerPositions(player);
+ const listed=Array.isArray(player?.positions)?player.positions:[];
+ if(listed.length)return [...new Set(listed.filter(pos=>PLAYER_POSITION_GROUPS[pos]))];
+ return PLAYER_POSITION_GROUPS[player?.pos]&&player.pos!=="GK"?[player.pos]:[];
+}
+function playerPositionLabel(player){const roles=detailedPositions(player).join(" / ");if(roles)return `${roles}${player?.positionSource==="estimated"?" (estimated)":""}`;return player?.pos&&player.pos!=="GK"?`${player.pos} (specific role unavailable)`:player?.pos||"—";}
+function playerPositionGroup(player){return PLAYER_POSITION_GROUPS[player?.pos]||player?.pos||"";}
+function estimatePlayerPositions(player){
+ if(!player||player.pos==="GK")return player;
+ if(Array.isArray(player.positions)&&player.positions.some(pos=>PLAYER_POSITION_GROUPS[pos]))return player;
+ const profiles={
+  DEF:[["CB"],["CB"],["CB","DM"],["LB"],["LB","LWB"],["LB","LM"],["RB"],["RB","RWB"],["RB","RM"],["LWB","LB"],["RWB","RB"]],
+  MID:[["DM"],["DM","CM"],["DM","CB"],["CM"],["CM"],["CM","DM"],["CM","AM"],["AM"],["AM","CM"],["AM","LAM"],["AM","RAM"],["LM"],["LM","LAM"],["LM","LWB"],["RM"],["RM","RAM"],["RM","RWB"],["LAM","AM"],["RAM","AM"]],
+  ATT:[["ST"],["ST","CF"],["CF"],["CF","ST"],["LW"],["LW","RW"],["LW","AM"],["RW"],["RW","LW"],["RW","AM"]]
+ };
+ const options=profiles[player.pos];if(!options)return player;
+ const key=`${player.id??""}|${player.name??""}`;let hash=0;for(let i=0;i<key.length;i++)hash=(hash*31+key.charCodeAt(i))|0;
+ player.positions=[...options[Math.abs(hash)%options.length]];player.positionSource="estimated";
+ return player;
+}
+function normalizePlayerAttributes(player){
+ if(!player||typeof player!=="object")return player;
+ if(!player.attributes||typeof player.attributes!=="object")player.attributes={};
+ const primary=detailedPositions(player)[0]||player.pos||"MID",group=PLAYER_POSITION_GROUPS[primary]||playerPositionGroup(player);
+ const offsets={GK:{pace:-16,shooting:-24,passing:-6,dribbling:-18,defending:4,physical:2,keeping:24},DEF:{pace:0,shooting:-14,passing:-1,dribbling:-5,defending:9,physical:6,keeping:-42},MID:{pace:1,shooting:-2,passing:7,dribbling:5,defending:1,physical:-2,keeping:-44},ATT:{pace:7,shooting:9,passing:1,dribbling:6,defending:-17,physical:2,keeping:-44}}[group]||{};
+ const roleOffsets={CB:{defending:7,physical:4,shooting:-3},LB:{pace:5,passing:2},RB:{pace:5,passing:2},LWB:{pace:7,passing:3},RWB:{pace:7,passing:3},DM:{defending:6,passing:3},CM:{passing:3,dribbling:2},AM:{shooting:3,passing:3,dribbling:3},LAM:{shooting:3,passing:3,dribbling:3},RAM:{shooting:3,passing:3,dribbling:3},LM:{pace:3,passing:2},RM:{pace:3,passing:2},LW:{pace:4,dribbling:4},RW:{pace:4,dribbling:4},ST:{shooting:5,physical:2},CF:{shooting:4,physical:2},SS:{shooting:3,dribbling:3}}[primary]||{};
+ const seed=`${player.id??""}|${player.name??"player"}`;
+ PLAYER_ATTRIBUTE_KEYS.forEach((key,index)=>{
+  let hash=0;for(let i=0;i<seed.length;i++)hash=(hash*31+seed.charCodeAt(i))|0;
+  const variation=((Math.abs(hash+index*7919)%7)-3),base=Number(player.ovr)||DEFAULT_RATING;
+  const desired=Math.max(20,Math.min(95,Math.round(base+(offsets[key]||0)+(roleOffsets[key]||0)+variation)));
+  const existing=Number(player.attributes[key]);
+  player.attributes[key]=Number.isFinite(existing)?Math.max(1,Math.min(99,Math.round(existing))):desired;
+ });
+ return player;
+}
+function positionSuitability(player,slot){
+ const roles=detailedPositions(player),group=PLAYER_POSITION_GROUPS[slot]||"";
+ if(roles.includes(slot))return {level:"natural",label:"Natural",penalty:0};
+ if(roles.length&&roles.some(role=>PLAYER_POSITION_GROUPS[role]===group))return {level:"adaptable",label:"Adaptable",penalty:2};
+ if(!roles.length&&playerPositionGroup(player)===group)return {level:"unverified",label:"Group only",penalty:4};
+ return {level:"out",label:"Out of position",penalty:20};
+}
+function attributeRatingForPosition(player,slot){
+ normalizePlayerAttributes(player);
+ const a=player.attributes||{};
+ const weights=slot==="GK"?{keeping:.68,defending:.12,physical:.08,passing:.06,pace:.04,dribbling:.01,shooting:.01}:
+  ["CB","LB","RB","LWB","RWB"].includes(slot)?{defending:.34,physical:.2,pace:.14,passing:.13,dribbling:.08,shooting:.06,keeping:.05}:
+  slot==="DM"?{defending:.24,passing:.24,physical:.15,dribbling:.13,pace:.1,shooting:.09,keeping:.05}:
+  ["CM","LM","RM","LAM","RAM","AM"].includes(slot)?{passing:.25,dribbling:.2,pace:.16,shooting:.14,defending:.11,physical:.09,keeping:.05}:
+  {shooting:.28,pace:.22,dribbling:.2,physical:.12,passing:.1,defending:.04,keeping:.04};
+ return Math.round(Object.entries(weights).reduce((sum,[key,weight])=>sum+(Number(a[key])||0)*weight,0));
+}
+function playerRatingForPosition(player,slot){
+ const fit=positionSuitability(player,slot),rating=Math.round((Number(player?.ovr)||DEFAULT_RATING)*.48+attributeRatingForPosition(player,slot)*.52)-fit.penalty;
+ return {rating:Math.max(1,Math.min(99,rating)),fit};
+}
+function playerAttributeSummary(player){
+ normalizePlayerAttributes(player);const a=player.attributes;
+ return `PAC ${a.pace} · SHO ${a.shooting} · PAS ${a.passing} · DRI ${a.dribbling} · DEF ${a.defending} · PHY ${a.physical}${player.pos==="GK"?` · GK ${a.keeping}`:""}`;
+}
 function applyRosterAudit(club,players){
- const audit=ROSTER_AUDIT[club]; if(!audit)return players;
+ const audit=ROSTER_AUDIT[club]; if(!audit){players.forEach(player=>{estimatePlayerPositions(player);normalizePlayerAttributes(player);});return players;}
  const byName=new Map(players.map(p=>[normPlayerName(p.name),p]));
  for(const [name,pos] of Object.entries(audit.positions||{})){const player=byName.get(normPlayerName(name));if(player)player.pos=pos;}
+ for(const [name,positions] of Object.entries(audit.specificPositions||{})){const player=byName.get(normPlayerName(name));if(player){player.positions=[...positions];player.positionSource="researched";}}
  for(const item of audit.additions||[]){const [pos,name,age,ovr]=item;const key=normPlayerName(name);if(!byName.has(key)){const player={id:`${club}::${key}`,pos,name,age,ovr};players.push(player);byName.set(key,player);}}
+ players.forEach(player=>{estimatePlayerPositions(player);normalizePlayerAttributes(player);});
  return players;
 }
 function applyBjelopoljacRatingUpdates(players){
@@ -59,7 +125,7 @@ const SAVE_SLOT_PREFIX="bhfm_slot_";
 const SAVE_SLOT_BACKUP_PREFIX="bhfm_slot_backup_";
 const ACTIVE_SLOT_KEY="bhfm_active_slot";
 const SAVE_VERSION=9;
-const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:400000,points:0,played:0,wins:0,draws:0,losses:0,lossStreak:0,managerFired:false,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],transferOffers:[],regionalPlayers:[],regionalMarketSeeded:false,aiBudgets:{},cup:null,playerStats:{},seasonHistory:[],achievements:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,pendingMatch:null,jobNotice:"",celebration:null,saveVersion:SAVE_VERSION};
+const DEFAULT_STATE={club:"FK Sarajevo",league:"Premijer Liga BiH",rep:50,balance:400000,points:0,played:0,wins:0,draws:0,losses:0,lossStreak:0,managerFired:false,formation:"4-3-3",mentality:"Balanced",players:[],xi:[],tab:"Home",season:2026,matchday:0,fixtures:[],table:{},results:[],jobBoard:[],jobBoardMD:-1,jobOffers:[],repHistory:[],transferTick:0,summerTick:0,transferPool:[],transfersDone:[],transferOffers:[],regionalPlayers:[],regionalMarketSeeded:false,aiBudgets:{},cup:null,playerStats:{},seasonHistory:[],achievements:[],seasonReport:null,clubSquads:{},competitionStates:{},leagueMembership:null,promotionHistory:[],transferSort:"position",statsCompetition:"league",lastMatch:null,pendingMatch:null,jobNotice:"",transferNotice:"",celebration:null,saveVersion:SAVE_VERSION};
 function isObject(value){return !!value&&typeof value==="object"&&!Array.isArray(value)}
 function normalizeSavedState(raw){
  if(!isObject(raw))return null;
@@ -87,6 +153,7 @@ function normalizeSavedState(raw){
  for(const key of ["rep","balance","points","played","wins","draws","losses","lossStreak","transferTick","summerTick"])if(!Number.isFinite(Number(merged[key])))merged[key]=DEFAULT_STATE[key];
  merged.rep=Math.max(0,Math.min(100,Number(merged.rep)));
  if(typeof merged.managerFired!=="boolean")merged.managerFired=false;
+ if(typeof merged.transferNotice!=="string")merged.transferNotice="";
  if(typeof merged.club!=="string"||!merged.club)merged.club=DEFAULT_STATE.club;
  if(typeof merged.league!=="string"||!leagues[merged.league])merged.league=Object.keys(leagues).find(l=>leagues[l].includes(merged.club))||DEFAULT_STATE.league;
  if(!formations[merged.formation])merged.formation=DEFAULT_STATE.formation;
@@ -436,11 +503,29 @@ function generateTransferPool(){
 }
 
 function ensureTransferPool(){
- if(!Array.isArray(state.transferPool)||!state.transferPool.length){state.transferPool=generateTransferPool();return}
- const known=new Set(state.transferPool.map(p=>String(p.id)));
- const currentRegional=state.transferPool.filter(p=>p.marketOrigin).length;
- const regional=regionalTransferSelection(known).slice(0,Math.max(0,8-currentRegional));
- state.transferPool.push(...regional);
+ const old=Array.isArray(state.transferPool)?state.transferPool:[];
+ const clubListings=new Map(),regionalListings=new Map();
+ old.forEach(listing=>{
+  if(listing.marketOrigin){
+   const live=regionalTransferEntries().find(p=>String(p.id)===String(listing.id));
+   if(live)regionalListings.set(String(live.id),live);
+   return;
+  }
+  const squad=state.clubSquads?.[listing.club];
+  const live=Array.isArray(squad)&&squad.find(p=>String(p.id)===String(listing.id));
+  if(live&&listing.club!==state.club&&live.ovr>=Math.max(55,teamRating(state.club)-6))clubListings.set(String(live.id),{...live,club:listing.club,fee:Math.max(15000,Math.round((live.ovr-45)*(live.ovr-45)*900)),wage:Math.max(400,Math.round((live.ovr-45)*45))});
+ });
+ const knownClub=new Set(clubListings.keys());
+ if(clubListings.size<18){
+  const candidates=[];Object.entries(state.clubSquads||{}).forEach(([club,squad])=>{
+   if(club===state.club||!Array.isArray(squad))return;
+   squad.forEach(p=>{if(p.ovr>=Math.max(55,teamRating(state.club)-6)&&!knownClub.has(String(p.id)))candidates.push({...p,club,fee:Math.max(15000,Math.round((p.ovr-45)*(p.ovr-45)*900)),wage:Math.max(400,Math.round((p.ovr-45)*45))});});
+  });
+  shuffle(candidates).slice(0,18-clubListings.size).forEach(p=>clubListings.set(String(p.id),p));
+ }
+ const knownRegional=new Set(regionalListings.keys());
+ if(regionalListings.size<8)regionalTransferSelection(knownRegional).slice(0,8-regionalListings.size).forEach(p=>regionalListings.set(String(p.id),p));
+ state.transferPool=[...clubListings.values(),...regionalListings.values()];
 }
 function initialAIBudget(club){
  const league=Object.keys(leagues).find(name=>playableClubsForLeague(name).includes(club));
@@ -553,7 +638,7 @@ function ratingDeltaForPlayer(p,apps=0){
 }
 function developSquad(squad,club){
  const changes=[];
- squad.forEach(p=>{const stat=state.playerStats[statKey(club,p,"league")]||blankPlayerStat(club,p,"league");const old=p.ovr;const delta=ratingDeltaForPlayer(p,stat.apps||0);p.ovr=Math.max(35,Math.min(85,p.ovr+delta));p.age+=1;changes.push({id:p.id,name:p.name,old,now:p.ovr,delta,age:p.age,club});});
+ squad.forEach(p=>{const stat=state.playerStats[statKey(club,p,"league")]||blankPlayerStat(club,p,"league");const old=p.ovr;const delta=ratingDeltaForPlayer(p,stat.apps||0);p.ovr=Math.max(35,Math.min(85,p.ovr+delta));normalizePlayerAttributes(p);PLAYER_ATTRIBUTE_KEYS.forEach(key=>p.attributes[key]=Math.max(1,Math.min(99,p.attributes[key]+delta)));p.age+=1;changes.push({id:p.id,name:p.name,old,now:p.ovr,delta,age:p.age,club});});
  return changes;
 }
 function developPlayersAtSeasonEnd(){
@@ -739,11 +824,28 @@ function playerUnavailable(p){return Number(p?.injuryMatches||0)>0||Number(p?.su
 function injuryDuration(){const roll=Math.random();return roll<.48?1:roll<.75?2:roll<.90?3:roll<.97?4:5}
 function normalizeXI(){
  const dismissed=new Set((state.pendingMatch?.dismissals||[]).filter(d=>d&&d.team===state.club&&d.id!=null).map(d=>String(d.id)));
- const valid=state.players.filter(p=>!dismissed.has(String(p.id))&&!playerUnavailable(p)).map(p=>p.id), seen=new Set(), out=[];
+ const valid=state.players.filter(p=>!dismissed.has(String(p.id))&&!playerUnavailable(p)),byId=new Map(valid.map(p=>[String(p.id),p.id])),seen=new Set(),out=[];
  const targetCount=Math.min(Math.max(0,11-dismissed.size),valid.length);
- (Array.isArray(state.xi)?state.xi:[]).forEach(id=>{if(valid.includes(id)&&!seen.has(id)){seen.add(id);out.push(id)}});
- valid.forEach(id=>{if(out.length<targetCount&&!seen.has(id)){seen.add(id);out.push(id)}});
+ (Array.isArray(state.xi)?state.xi:[]).forEach(id=>{const key=String(id);if(byId.has(key)&&!seen.has(key)){seen.add(key);out.push(byId.get(key));}});
+ valid.forEach(p=>{const key=String(p.id);if(out.length<targetCount&&!seen.has(key)){seen.add(key);out.push(p.id);}});
  state.xi=out;
+}
+function bestXIForFormation(squad,formation){
+ const available=(squad||[]).filter(p=>!playerUnavailable(p)),slots=formation||formations[DEFAULT_STATE.formation],picked=[],used=new Set();
+ slots.forEach(([position])=>{
+  const candidates=available.filter(player=>!used.has(String(player.id))).map(player=>({player,...playerRatingForPosition(player,position)}));
+  candidates.sort((a,b)=>b.rating-a.rating||b.player.ovr-a.player.ovr||String(a.player.name).localeCompare(String(b.player.name)));
+  if(candidates.length){picked.push(candidates[0].player);used.add(String(candidates[0].player.id));}else picked.push(null);
+ });
+ return picked;
+}
+function lineupPositionRating(ids,players,formation){
+ const roster=players||state.players||[],slots=formation||formations[state.formation]||formations[DEFAULT_STATE.formation];
+ const ratings=slots.map(([position],index)=>{
+  const player=roster.find(p=>String(p.id)===String(ids?.[index]));
+  return player?playerRatingForPosition(player,position).rating:null;
+ }).filter(Number.isFinite);
+ return ratings.length?ratings.reduce((sum,value)=>sum+value,0)/ratings.length:teamRating(state.club);
 }
 function updatePlayerAvailabilityAfterMatch(report,startingXI){
  (state.players||[]).forEach(p=>{p.injuryMatches=Math.max(0,Number(p.injuryMatches||0)-1);p.suspensionMatches=Math.max(0,Number(p.suspensionMatches||0)-1)});
@@ -760,24 +862,7 @@ function updatePlayerAvailabilityAfterMatch(report,startingXI){
 }
 function autoPickXI(){
  const formation=formations[state.formation]||formations[DEFAULT_STATE.formation];
- const available=state.players.filter(p=>!playerUnavailable(p)).slice().sort((a,b)=>b.ovr-a.ovr||String(a.name).localeCompare(String(b.name)));
- const picked=Array(formation.length).fill(null);
- const groupFor=position=>{
-  if(position==="GK")return "GK";
-  if(["LB","RB","CB"].includes(position))return "DEF";
-  if(["DM","CM","RM","LM","AM"].includes(position))return "MID";
-  if(["RW","LW","ST","CF"].includes(position))return "ATT";
-  return "";
- };
- for(const group of ["GK","DEF","MID","ATT"]){
-  const slots=formation.map((slot,index)=>({slot,index})).filter(({slot})=>groupFor(slot[0])===group);
-  const players=available.filter(player=>groupFor(player.pos)===group);
-  slots.forEach(({index},i)=>{if(players[i])picked[index]=players[i].id;});
- }
- const used=new Set(picked.filter(Boolean));
- const remaining=available.filter(player=>!used.has(player.id));
- formation.forEach((_,index)=>{if(!picked[index]&&remaining.length)picked[index]=remaining.shift().id;});
- state.xi=picked.filter(Boolean);selectedTacticPlayerId=null;normalizeXI();save();render();
+ state.xi=bestXIForFormation(state.players,formation).filter(Boolean).map(player=>player.id);selectedTacticPlayerId=null;normalizeXI();save();render();
 }
 
 function initClub(){ensureRegionalTransferPlayers();ensureClubSquads();loadClubSquad(state.club);initSeason(false);save()}
@@ -874,7 +959,7 @@ function initPlayerStats(){
 }
 function lineupForStats(club){
  if(club===state.club){normalizeXI();return state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).slice(0,11)}
- ensureClubSquads();return (state.clubSquads[club]||[]).slice(0,11);
+ ensureClubSquads();return bestXIForFormation(state.clubSquads[club]||[],formations["4-3-3"]).filter(Boolean);
 }
 function weightedPlayer(players){
  if(!players.length)return null;
@@ -884,7 +969,11 @@ function weightedPlayer(players){
 
 function pickPlayer(players, weights){
  const pool=players.filter(Boolean); if(!pool.length)return null;
- const w=pool.map(p=>weights?.[p.pos]||1), total=w.reduce((a,b)=>a+b,0);
+ const w=pool.map(p=>{
+  normalizePlayerAttributes(p);
+  const base=weights?.[p.pos]||1,skill=p.pos==="ATT"?(p.attributes.shooting*.6+p.attributes.pace*.2+p.attributes.dribbling*.2):p.pos==="MID"?(p.attributes.passing*.5+p.attributes.dribbling*.25+p.attributes.shooting*.25):p.pos==="DEF"?(p.attributes.defending*.55+p.attributes.physical*.25+p.attributes.pace*.2):p.attributes.keeping;
+  return base*(.72+Math.max(1,skill)/180);
+ }), total=w.reduce((a,b)=>a+b,0);
  let r=Math.random()*total;
  for(let i=0;i<pool.length;i++){r-=w[i];if(r<=0)return pool[i]}
  return pool[pool.length-1];
@@ -1058,6 +1147,10 @@ function dismissPlayerForMatch(pending,event){
  if(event.team===state.club)state.xi=state.xi.filter(id=>String(id)!==String(player.id));
 }
 function processShownDismissals(pending,events){(events||[]).filter(e=>e.type==="red").forEach(e=>dismissPlayerForMatch(pending,e));}
+function restorePreMatchFormation(pending){
+ const formation=pending?.startingFormation;
+ if(formations[formation]){state.formation=formation;normalizeXI();}
+}
 function completeFirstHalfForfeit(pending){
  if(!pending?.firstHalf?.forfeitLoser)return;
  processShownDismissals(pending,pending.firstHalf.events);
@@ -1307,8 +1400,7 @@ function playMatch(){
   state.jobNotice="No fixture was found for this matchday. Your saved league schedule was preserved.";save();render();return;
  }
  const referee=assignReferee(),results=round.map(f=>simulateFixture(f,f.home===my.home&&f.away===my.away?referee:assignReferee())),idx=results.findIndex(r=>r.home===my.home&&r.away===my.away);
- const starters=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
- const avg=starters.length?starters.reduce((a,p)=>a+p.ovr,0)/starters.length:teamRating(state.club);
+ const avg=lineupPositionRating(state.xi,state.players,formations[state.formation]);
  const xg=expectedGoalsForFixture(my.home,my.away,referee),squadFactor=Math.max(.9,Math.min(1.1,1+(avg-teamRating(state.club))*.012));
  const homeIsUser=my.home===state.club,homeTactic=homeIsUser?tacticGoalMultiplier(state.mentality):1,awayTactic=!homeIsUser?tacticGoalMultiplier(state.mentality):1;
  const homeFirst=Math.min(poissonish(xg.home*.46*(homeIsUser?squadFactor:1)*homeTactic),4),awayFirst=Math.min(poissonish(xg.away*.46*(!homeIsUser?squadFactor:1)*awayTactic),4);
@@ -1346,7 +1438,7 @@ function resumeSecondHalf(){
    else substitutionText="No suitable substitute was available; the starting XI remains unchanged.";
  }
  const starters=state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
- const avg=starters.length?starters.reduce((a,p)=>a+p.ovr,0)/starters.length:teamRating(state.club);
+ const avg=lineupPositionRating(state.xi,state.players,formations[state.formation]);
  const referee=pending.referee||assignReferee();
  const xg=expectedGoalsForFixture(fixture.home,fixture.away,referee),squadFactor=Math.max(.9,Math.min(1.1,1+(avg-teamRating(state.club))*.012));
  const tacticFactor=tacticGoalMultiplier(state.mentality);
@@ -1384,6 +1476,8 @@ function resumeSecondHalf(){
 }
 function completePendingMatch(){
  const pending=state.pendingMatch;if(!pending||!pending.finalReport)return;
+ // Match-only formation changes should never replace the tactics-screen setup.
+ restorePreMatchFormation(pending);
  removeOffPitchDisciplineEvents(pending);
  const report=pending.finalReport,fixture=pending.fixture;
  const initialXI=pending.startingXI||[],subLog=(pending.substitutions||[]).slice().sort((a,b)=>a.minute-b.minute);
@@ -1409,7 +1503,6 @@ function completePendingMatch(){
   }else games[pending.roundIndex].winner=finalHome>finalAway?fixture.home:fixture.away;
   games.forEach((game,i)=>{if(i!==pending.roundIndex)updatePlayerStatsForResult(game,"cup");});
   updatePlayerAvailabilityAfterMatch(report,initialXI);
-  if(formations[pending.startingFormation])state.formation=pending.startingFormation;
   state.lastMatch=report;state.pendingMatch=null;
   finishCupRound(games);
   save();state.tab="Match Report";render();return;
@@ -1424,7 +1517,6 @@ function completePendingMatch(){
  report.ticketRevenue=fixture.home===state.club?gate.revenue:0;
  if(report.ticketRevenue)state.balance+=report.ticketRevenue;
  updatePlayerAvailabilityAfterMatch(report,initialXI);
- if(formations[pending.startingFormation])state.formation=pending.startingFormation;
  state.lastMatch=report;state.pendingMatch=null;state.matchday++;
  advanceOtherLeaguesOneRound(state.league);
  if(transferStatus().type==="mid")runAITransferTick("mid");
@@ -1502,8 +1594,8 @@ function squad(){
  let formation=formations[state.formation],mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||null}));
  const bench=state.players.filter(p=>!playerUnavailable(p)&&!state.xi.includes(p.id));
  const sourceLabel=p=>p.rosterSource==="match-sheet"?"Match sheet":p.rosterSource==="public-roster"?"Public roster":p.rosterSource==="generated"?"Generated depth":p.rosterSource==="regional-market"?`${p.nationality||"Regional"} market`:"Seeded roster";
-   const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>{const status=Number(p.injuryMatches)>0?`🏥 Injured · ${p.injuryMatches} match${p.injuryMatches===1?"":"es"} left`:Number(p.suspensionMatches)>0?`🟥 Suspended · ${p.suspensionMatches} match${p.suspensionMatches===1?"":"es"} left`:"";return `<div class="player ${showSell?"":"tactic-bench-player"}" ${showSell?"":`draggable="true" onclick="selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}><span class="tactic-name ${String(selectedTacticPlayerId)===String(p.id)?"selected":""}" ${showSell?"":`onclick="event.stopPropagation();selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}>${Number(p.injuryMatches)>0?"❌ ":Number(p.suspensionMatches)>0?"🟥 ":""}${p.name}<br><span class="sub">${p.pos} • ${p.age} yrs • ${sourceLabel(p)}${status?` • ${status}`:""}${Number(p.seasonYellows)>0?` • 🟨 ${p.seasonYellows}/5`:""}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11||!canSellPlayers?"disabled":""}>Sell</button>`:""}</div>`}).join("")}</div>`;
- document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div><div class="sub tactic-hint">Tap one player's name, then another to swap them. You can also drag a player onto a position.</div></div><div class="pitch" ondragover="allowTacticDrop(event)">${mapped.map((m,i)=>`<div class="mark tactic-mark ${m.p&&String(selectedTacticPlayerId)===String(m.p.id)?"selected":""}" style="left:${m.slot[1]}%;top:${m.slot[2]}%" tabindex="0" role="button" aria-label="${m.slot[0]}: ${m.p?m.p.name:"Empty"}" onclick="selectTacticSlot(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectTacticSlot(${i})}" ondragover="allowTacticDrop(event)" ondrop="dropTacticPlayer(event,${i})" ${m.p?`draggable="true" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(m.p.id))}'))"`:""}><div class="shirt">${m.p?m.p.pos:"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><button class="primary" onclick="autoPickXI()">Auto-pick</button><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>`<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${m.slot[0]}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>`<option value="${p.id}" ${m.p&&p.id===m.p.id?'selected':''}>${p.name} • ${p.pos} • ${p.ovr}</option>`).join("")}</select></div>`).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
+   const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>{const status=Number(p.injuryMatches)>0?`🏥 Injured · ${p.injuryMatches} match${p.injuryMatches===1?"":"es"} left`:Number(p.suspensionMatches)>0?`🟥 Suspended · ${p.suspensionMatches} match${p.suspensionMatches===1?"":"es"} left`:"";const roles=playerPositionLabel(p);return `<div class="player ${showSell?"":"tactic-bench-player"}" ${showSell?"":`draggable="true" onclick="selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}><span class="tactic-name ${String(selectedTacticPlayerId)===String(p.id)?"selected":""}" ${showSell?"":`onclick="event.stopPropagation();selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}>${Number(p.injuryMatches)>0?"❌ ":Number(p.suspensionMatches)>0?"🟥 ":""}${p.name}<br><span class="sub">${roles} • ${p.age} yrs • ${sourceLabel(p)}${status?` • ${status}`:""}${Number(p.seasonYellows)>0?` • 🟨 ${p.seasonYellows}/5`:""}</span><br><span class="sub">${playerAttributeSummary(p)}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11||!canSellPlayers?"disabled":""}>Sell</button>`:""}</div>`}).join("")}</div>`;
+ document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div><div class="sub tactic-hint">Tap one player's name, then another to swap them. You can also drag a player onto a position.</div></div><div class="pitch" ondragover="allowTacticDrop(event)">${mapped.map((m,i)=>`<div class="mark tactic-mark ${m.p&&String(selectedTacticPlayerId)===String(m.p.id)?"selected":""}" style="left:${m.slot[1]}%;top:${m.slot[2]}%" tabindex="0" role="button" aria-label="${m.slot[0]}: ${m.p?m.p.name:"Empty"}" onclick="selectTacticSlot(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectTacticSlot(${i})}" ondragover="allowTacticDrop(event)" ondrop="dropTacticPlayer(event,${i})" ${m.p?`draggable="true" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(m.p.id))}'))"`:""}><div class="shirt">${m.p?(detailedPositions(m.p)[0]||m.p.pos):"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><button class="primary" onclick="autoPickXI()">Auto-pick</button><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>{const slot=m.slot[0];return `<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${slot}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>{const fit=playerRatingForPosition(p,slot);return `<option value="${p.id}" ${m.p&&m.p.id===p.id?'selected':''}>${p.name} • ${playerPositionLabel(p)} • ${fit.fit.label} • ${fit.rating}</option>`}).join("")}</select>${m.p?`<span class="sub">${playerRatingForPosition(m.p,slot).fit.label}</span>`:""}</div>`}).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
 function selectTacticPlayer(id){
  id=String(id);if(!state.players.some(p=>String(p.id)===id))return;
  if(selectedTacticPlayerId===null){selectedTacticPlayerId=id;render();return;}
@@ -1603,13 +1695,13 @@ function playCup(){
  const fixture=cupCurrentFixture();if(!fixture){if(state.cup.byeClubs?.includes(state.club)){advanceCupBye();return;}alert("Your club has no cup match in this round.");return;}
  normalizeXI();
  const referee=assignReferee(),xg=expectedGoalsForFixture(fixture.home,fixture.away,referee),homeIsUser=fixture.home===state.club;
- const squadFactor=Math.max(.9,Math.min(1.1,1+(state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).reduce((sum,p,_,arr)=>sum+p.ovr/Math.max(1,arr.length),0)-teamRating(state.club))*.012));
+ const squadFactor=Math.max(.9,Math.min(1.1,1+(lineupPositionRating(state.xi,state.players,formations[state.formation])-teamRating(state.club))*.012));
  const homeTactic=homeIsUser?tacticGoalMultiplier(state.mentality):1,awayTactic=!homeIsUser?tacticGoalMultiplier(state.mentality):1;
  const firstHome=Math.min(poissonish(xg.home*.46*(homeIsUser?squadFactor:1)*homeTactic),4),firstAway=Math.min(poissonish(xg.away*.46*(!homeIsUser?squadFactor:1)*awayTactic),4);
  const first=resolveDisciplineEvents(remapMatchSegment(generateMatchReport({home:fixture.home,away:fixture.away,hg:firstHome,ag:firstAway},referee),1,45,"half"));
  const games=state.cup.pending.map(game=>game.home===fixture.home&&game.away===fixture.away?{...game,hg:firstHome,ag:firstAway,referee:referee.name,refereeProfile:referee.id}:simulateCupGame(game));
  const roundIndex=games.findIndex(game=>game.home===fixture.home&&game.away===fixture.away);
- state.pendingMatch={competition:"cup",competitionLabel:state.cup.roundName,results:games,roundIndex,fixture:{...fixture},firstHalf:first,forfeitLoser:first.forfeitLoser||null,dismissals:[],referee,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
+ state.pendingMatch={competition:"cup",competitionLabel:state.cup.roundName,results:games,roundIndex,fixture:{...fixture},firstHalf:first,forfeitLoser:first.forfeitLoser||null,dismissals:[],referee,startingFormation:state.formation,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
  state.lastMatch={...first,competition:"cup",competitionLabel:state.cup.roundName,hg:firstHome,ag:firstAway,halfTime:true};state.tab="Match Report";save();render();
 }
 function cup(){
@@ -1674,13 +1766,13 @@ function acceptAITransferOffer(index){
 function declineAITransferOffer(index){state.transferOffers=(state.transferOffers||[]).filter((_,i)=>i!==index);save();render()}
 function transfers(){
  const st=transferStatus();
- if(st.type!=="closed")ensureTransferPool();
+ if(st.type!=="closed"){ensureClubSquads();ensureTransferPool();}
  const available=st.type!=="closed"?state.transferPool.filter(p=>p.club!==state.club):[];
  const sort=state.transferSort||"position";
  const sorted=[...available].sort((a,b)=>sort==="rating"?(b.ovr-a.ovr)||a.name.localeCompare(b.name):sort==="price"?(a.fee-b.fee)||a.name.localeCompare(b.name):(a.pos.localeCompare(b.pos)||b.ovr-a.ovr||a.name.localeCompare(b.name)));
  const recentDeals=(state.transfersDone||[]).filter(t=>t.season===state.season).slice(-8).reverse();
  const activeOffers=(state.transferOffers||[]).filter(isAITransferOfferActive);
- document.getElementById("app").innerHTML=`<div class="card"><h2>Transfers</h2><p class="sub">${st.label}</p>${st.type!=="closed"?'<p class="sub">The pool includes fictional regional-market players from Serbia and Croatia. Player ages and ratings are game estimates.</p>':""}
+ document.getElementById("app").innerHTML=`${state.transferNotice?`<div class="notice" style="margin-bottom:12px">${state.transferNotice}</div>`:""}<div class="card"><h2>Transfers</h2><p class="sub">${st.label}</p>${st.type!=="closed"?'<p class="sub">Players may turn down a move if your manager reputation is below 35 or your recent form is poor (under 1 point per match across at least 3 recent league games).</p><p class="sub">The pool includes fictional regional-market players from Serbia and Croatia. Player ages and ratings are game estimates.</p>':""}
  <div class="row"><span><b>Sort transfer pool</b></span><select onchange="state.transferSort=this.value;save();render()"><option value="position" ${sort==="position"?"selected":""}>Position</option><option value="rating" ${sort==="rating"?"selected":""}>Rating</option><option value="price" ${sort==="price"?"selected":""}>Price</option></select></div>
  ${st.type==="mid"?`<div class="notice">Mid-season window lasts 4 matchday ticks. AI clubs can sign and sell squad players during each open matchday.</div>`:""}
  ${st.type==="summer"?`<div class="notice">Summer market lasts 10 transfer ticks. Advance a tick to refresh the pool and let the market move.</div><button class="primary" onclick="useTransferTick()">Advance summer transfer tick</button>`:""}
@@ -1689,20 +1781,29 @@ function transfers(){
  ${sorted.length?`<div class="list">${sorted.map((p,i)=>`<div class="club"><div style="flex:1"><b>${p.name}</b><div class="sub">${p.club} • ${p.pos} • ${p.age} yrs • OVR ${p.ovr}</div><div class="sub">Fee €${p.fee.toLocaleString()} • Wage €${p.wage.toLocaleString()}/mo</div></div><button onclick="buyPlayerById(decodeURIComponent('${encodeURIComponent(String(p.id))}'))">${state.balance>=p.fee?'Buy':'Too expensive'}</button></div>`).join("")}</div>`:`${st.type!=="closed"?'<div class="sub">No players currently match the simplified transfer pool.</div>':''}`}</div><div class="card"><h3>Recent transfers</h3>${recentDeals.length?recentDeals.map(t=>`<div class="row"><span>${t.name}<br><span class="sub">${t.from} → ${t.to}${t.ai?' • AI':''}</span></span><b>€${Number(t.fee||0).toLocaleString()}</b></div>`).join(""):'<div class="sub">No completed transfers this season.</div>'}</div>`
 }
 function buyPlayerById(id){
- const st=transferStatus();if(st.type==="closed")return;ensureClubSquads();ensureAIBudgets();
- const p=state.transferPool.find(x=>String(x.id)===String(id)&&x.club!==state.club);if(!p||state.balance<p.fee)return;
+ const st=transferStatus();if(st.type==="closed")return;ensureClubSquads();ensureAIBudgets();ensureTransferPool();
+ const p=state.transferPool.find(x=>String(x.id)===String(id)&&x.club!==state.club);
+ if(!p){state.transferNotice="That listing is no longer available. The transfer pool has been refreshed.";save();render();return;}
+ if(state.balance<p.fee){state.transferNotice=`You need €${Number(p.fee-state.balance).toLocaleString()} more to afford ${p.name}.`;save();render();return;}
+ const recentMatches=state.results.flat().filter(r=>r.home===state.club||r.away===state.club).slice(-5);
+ const recentPoints=recentMatches.reduce((sum,r)=>{const gf=r.home===state.club?r.hg:r.ag,ga=r.home===state.club?r.ag:r.hg;return sum+(gf>ga?3:gf===ga?1:0);},0);
+ const poorForm=recentMatches.length>=3&&recentPoints/recentMatches.length<1;
+ if(Number(state.rep)<35||poorForm){
+  const reason=Number(state.rep)<35?`your manager reputation is ${state.rep} (35 required)`:`your recent form is ${recentPoints} points from ${recentMatches.length} league matches`;
+  state.transferNotice=`${p.name} rejected the move to ${state.club}: ${reason}. Improve your reputation or results and try again.`;save();render();return;
+ }
  let moved;
  if(p.marketOrigin){
-  ensureRegionalTransferPlayers();const sourceIndex=state.regionalPlayers.findIndex(x=>String(x.id)===String(p.id));if(sourceIndex<0)return;
+  ensureRegionalTransferPlayers();const sourceIndex=state.regionalPlayers.findIndex(x=>String(x.id)===String(p.id));if(sourceIndex<0){state.transferNotice="That listing is no longer available. The transfer pool has been refreshed.";ensureTransferPool();save();render();return;}
   moved=clonePlayer(state.regionalPlayers[sourceIndex]);state.regionalPlayers.splice(sourceIndex,1);
  }else{
-  const source=state.clubSquads[p.club]||[];const sourceIndex=source.findIndex(x=>String(x.id)===String(p.id));if(sourceIndex<0)return;
+  const source=state.clubSquads[p.club]||[];const sourceIndex=source.findIndex(x=>String(x.id)===String(p.id));if(sourceIndex<0){state.transferNotice="That listing is no longer available. The transfer pool has been refreshed.";ensureTransferPool();save();render();return;}
   moved=clonePlayer(source[sourceIndex]);state.clubSquads[p.club]=source.filter((_,i)=>i!==sourceIndex);state.aiBudgets[p.club]=Number(state.aiBudgets[p.club]||0)+p.fee;
  }
  state.balance-=p.fee;state.players.push(moved);state.clubSquads[state.club]=state.players.map(clonePlayer);
  normalizeXI();state.transfersDone.push({name:moved.name,from:p.marketOrigin||p.club,to:state.club,fee:p.fee,id:moved.id,season:state.season});
  if(p.fee>=250000)addAchievement("major-transfer",`Major signing: ${moved.name}`,`${state.club} signed ${moved.name} from ${p.club} for €${Number(p.fee).toLocaleString()}.`,"💸",{season:state.season,club:state.club,fee:p.fee,player:moved.name});
- state.transferPool=state.transferPool.filter(x=>String(x.id)!==String(p.id));save();render();
+ state.transferPool=state.transferPool.filter(x=>String(x.id)!==String(p.id));state.transferNotice=`${moved.name} accepted the move to ${state.club}.`;save();render();
 }
 function buyPlayer(i){const st=transferStatus();if(st.type==="closed")return;ensureTransferPool();const p=state.transferPool.filter(x=>x.club!==state.club)[i];if(p)buyPlayerById(p.id)}
 
