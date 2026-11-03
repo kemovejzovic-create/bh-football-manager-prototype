@@ -552,13 +552,23 @@ function maybeGenerateAITransferOffer(windowType){
  });
  if(!candidates.length)return null;
  const offer=candidates[Math.floor(Math.random()*candidates.length)];
- const item={playerId:offer.player.id,playerName:offer.player.name,from:state.club,to:offer.buyer,fee:offer.fee,season:state.season,window:windowType,createdMatchday:state.matchday};
+ const item={playerId:offer.player.id,playerName:offer.player.name,from:state.club,to:offer.buyer,fee:offer.fee,season:state.season,window:windowType,createdMatchday:state.matchday,createdSummerTick:windowType==="summer"?state.summerTick:null};
  state.transferOffers.push(item);return item;
 }
 function isAITransferOfferActive(offer){
  const createdMatchday=Number(offer?.createdMatchday);
  if(!offer||offer.season!==state.season||offer.from!==state.club||!Number.isFinite(createdMatchday)||state.matchday>createdMatchday)return false;
  const current=transferStatus();
+ if(offer.window==="summer"){
+  const createdSummerTick=Number(offer.createdSummerTick);
+  // Older saves have no summer tick; let those offers survive until the
+  // summer window closes, while new offers expire when the next tick starts.
+  if(offer.createdSummerTick==null)return current.type==="summer"||(current.type==="closed"&&createdMatchday>=seasonMatchdays());
+  if(!Number.isFinite(createdSummerTick)||state.summerTick!==createdSummerTick)return false;
+  if(current.type==="summer")return true;
+  // The manager still gets a chance to review an offer from the final tick.
+  return current.type==="closed"&&createdMatchday>=seasonMatchdays()&&createdSummerTick===10;
+ }
  if(current.type===offer.window)return true;
  // The final mid-season tick advances the matchday past the window before
  // the manager gets a chance to review offers generated during that tick.
@@ -1011,7 +1021,7 @@ function refereeGoalRates(referee){return {home:referee.homeBias+referee.goalPre
 function generateMatchReport(r,referee=assignReferee()){
  const homeXI=lineupForStats(r.home), awayXI=lineupForStats(r.away);
  const events=[], usedMinutes=[];
- const add=(minute,type,text,team,player)=>events.push({minute,type,text,team:team||null,player:player?player.name:null});
+ const add=(minute,type,text,team,player)=>events.push({minute,type,text,team:team||null,player:player?player.name:null,playerId:player?.id==null?null:String(player.id)});
  const homeScorers=[], awayScorers=[];
  const score=[0,0];
 
@@ -1098,7 +1108,14 @@ function generateMatchReport(r,referee=assignReferee()){
 }
 function resolveDisciplineEvents(report,previousEvents=[]){
  const yellows=new Map(),dismissed=new Set(),redsByTeam=new Map();
- const keyFor=e=>`${e.team}::${e.player}`;
+ const keyFor=e=>{
+  let playerId=e.playerId;
+  if(playerId==null){
+   const roster=e.team===state.club?state.players:state.clubSquads?.[e.team]||[];
+   playerId=roster.find(p=>p.name===e.player)?.id;
+  }
+  return `${e.team}::${playerId!=null?`id:${playerId}`:`name:${e.player}`}`;
+ };
  const countRed=e=>{const count=(redsByTeam.get(e.team)||0)+1;redsByTeam.set(e.team,count);return count};
  [...previousEvents].sort((a,b)=>a.minute-b.minute).forEach(e=>{
   if(!e.team||!e.player)return;const key=keyFor(e);
@@ -1117,7 +1134,7 @@ function resolveDisciplineEvents(report,previousEvents=[]){
   if(event.type==="yellow"){
    const count=(yellows.get(key)||0)+1;yellows.set(key,count);
    if(count===2){
-    const dismissal={minute:event.minute,type:"red",text:`${event.player} is sent off after a second booking.`,team:event.team,player:event.player,secondYellow:true};
+    const dismissal={minute:event.minute,type:"red",text:`${event.player} is sent off after a second booking.`,team:event.team,player:event.player,playerId:event.playerId??null,secondYellow:true};
     events.push(dismissal);dismissed.add(key);
     if(countRed(dismissal)>=5)forfeit={loser:event.team,minute:event.minute};
    }
@@ -1140,9 +1157,13 @@ function resolveDisciplineEvents(report,previousEvents=[]){
 function dismissPlayerForMatch(pending,event){
  if(!pending||event?.type!=="red"||!event.team||!event.player)return;
  pending.dismissals=Array.isArray(pending.dismissals)?pending.dismissals:[];
- if(pending.dismissals.some(d=>d.team===event.team&&d.name===event.player))return;
  const roster=event.team===state.club?[...(pending.startingXI||[]),...(state.players||[])]:state.clubSquads[event.team]||[];
- const player=roster.find(p=>p.name===event.player);if(!player)return;
+ const player=event.playerId!=null?roster.find(p=>String(p.id)===String(event.playerId)):roster.find(p=>p.name===event.player);if(!player)return;
+ if(pending.dismissals.some(d=>{
+  if(d.team!==event.team)return false;
+  if(d.id!=null)return String(d.id)===String(player.id);
+  return d.name===event.player;
+ }))return;
  pending.dismissals.push({team:event.team,id:String(player.id),name:player.name,minute:event.minute});
  if(event.team===state.club)state.xi=state.xi.filter(id=>String(id)!==String(player.id));
 }
@@ -1594,8 +1615,8 @@ function squad(){
  let formation=formations[state.formation],mapped=formation.map((slot,i)=>({slot,p:state.players.find(p=>p.id===state.xi[i])||null}));
  const bench=state.players.filter(p=>!playerUnavailable(p)&&!state.xi.includes(p.id));
  const sourceLabel=p=>p.rosterSource==="match-sheet"?"Match sheet":p.rosterSource==="public-roster"?"Public roster":p.rosterSource==="generated"?"Generated depth":p.rosterSource==="regional-market"?`${p.nationality||"Regional"} market`:"Seeded roster";
-   const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>{const status=Number(p.injuryMatches)>0?`🏥 Injured · ${p.injuryMatches} match${p.injuryMatches===1?"":"es"} left`:Number(p.suspensionMatches)>0?`🟥 Suspended · ${p.suspensionMatches} match${p.suspensionMatches===1?"":"es"} left`:"";const roles=playerPositionLabel(p);return `<div class="player ${showSell?"":"tactic-bench-player"}" ${showSell?"":`draggable="true" onclick="selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}><span class="tactic-name ${String(selectedTacticPlayerId)===String(p.id)?"selected":""}" ${showSell?"":`onclick="event.stopPropagation();selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}>${Number(p.injuryMatches)>0?"❌ ":Number(p.suspensionMatches)>0?"🟥 ":""}${p.name}<br><span class="sub">${roles} • ${p.age} yrs • ${sourceLabel(p)}${status?` • ${status}`:""}${Number(p.seasonYellows)>0?` • 🟨 ${p.seasonYellows}/5`:""}</span><br><span class="sub">${playerAttributeSummary(p)}</span></span><b>${p.ovr}</b>${showSell?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11||!canSellPlayers?"disabled":""}>Sell</button>`:""}</div>`}).join("")}</div>`;
- document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div><div class="sub tactic-hint">Tap one player's name, then another to swap them. You can also drag a player onto a position.</div></div><div class="pitch" ondragover="allowTacticDrop(event)">${mapped.map((m,i)=>`<div class="mark tactic-mark ${m.p&&String(selectedTacticPlayerId)===String(m.p.id)?"selected":""}" style="left:${m.slot[1]}%;top:${m.slot[2]}%" tabindex="0" role="button" aria-label="${m.slot[0]}: ${m.p?m.p.name:"Empty"}" onclick="selectTacticSlot(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectTacticSlot(${i})}" ondragover="allowTacticDrop(event)" ondrop="dropTacticPlayer(event,${i})" ${m.p?`draggable="true" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(m.p.id))}'))"`:""}><div class="shirt">${m.p?(detailedPositions(m.p)[0]||m.p.pos):"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><button class="primary" onclick="autoPickXI()">Auto-pick</button><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>{const slot=m.slot[0];return `<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${slot}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>{const fit=playerRatingForPosition(p,slot);return `<option value="${p.id}" ${m.p&&m.p.id===p.id?'selected':''}>${p.name} • ${playerPositionLabel(p)} • ${fit.fit.label} • ${fit.rating}</option>`}).join("")}</select>${m.p?`<span class="sub">${playerRatingForPosition(m.p,slot).fit.label}</span>`:""}</div>`}).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${playerList(state.players,true)}</div>`}
+   const playerList=(list,showSell=false)=>`<div class="list">${list.map(p=>{const status=Number(p.injuryMatches)>0?`🏥 Injured · ${p.injuryMatches} match${p.injuryMatches===1?"":"es"} left`:Number(p.suspensionMatches)>0?`🟥 Suspended · ${p.suspensionMatches} match${p.suspensionMatches===1?"":"es"} left`:"";const roles=playerPositionLabel(p);return `<div class="player ${showSell?"":"tactic-bench-player"}" ${showSell?"":`draggable="true" onclick="selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}><span class="tactic-name ${String(selectedTacticPlayerId)===String(p.id)?"selected":""}" ${showSell?"":`onclick="event.stopPropagation();selectTacticPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))"`}>${Number(p.injuryMatches)>0?"❌ ":Number(p.suspensionMatches)>0?"🟥 ":""}${p.name}<br><span class="sub">${roles} • ${p.age} yrs • ${sourceLabel(p)}${status?` • ${status}`:""}${Number(p.seasonYellows)>0?` • 🟨 ${p.seasonYellows}/5`:""}</span><br><span class="sub">${playerAttributeSummary(p)}</span></span><b>${p.ovr}</b>${showSell&&canSellPlayers?`<button class="danger" onclick="sellPlayer(decodeURIComponent('${encodeURIComponent(String(p.id))}'))" ${state.players.length<=11?"disabled":""}>Sell</button>`:""}</div>`}).join("")}</div>`;
+ document.getElementById("app").innerHTML=`<div class="card"><div class="row"><div><h2>Squad & Tactics</h2><div class="sub">${state.club} • Squad OVR ${squadRating()}</div>${squadSourceNote()}</div><select onchange="changeFormation(this.value)">${Object.keys(formations).map(f=>`<option ${f===state.formation?'selected':''}>${f}</option>`).join("")}</select></div><div class="sub tactic-hint">Tap one player's name, then another to swap them. You can also drag a player onto a position.</div></div><div class="pitch" ondragover="allowTacticDrop(event)">${mapped.map((m,i)=>`<div class="mark tactic-mark ${m.p&&String(selectedTacticPlayerId)===String(m.p.id)?"selected":""}" style="left:${m.slot[1]}%;top:${m.slot[2]}%" tabindex="0" role="button" aria-label="${m.slot[0]}: ${m.p?m.p.name:"Empty"}" onclick="selectTacticSlot(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectTacticSlot(${i})}" ondragover="allowTacticDrop(event)" ondrop="dropTacticPlayer(event,${i})" ${m.p?`draggable="true" ondragstart="dragTacticPlayer(event,decodeURIComponent('${encodeURIComponent(String(m.p.id))}'))"`:""}><div class="shirt">${m.p?(detailedPositions(m.p)[0]||m.p.pos):"?"}</div><div class="small">${m.p?m.p.name:"Empty"}</div></div>`).join("")}</div><div class="card"><div class="row"><h3>Starting XI</h3><button class="primary" onclick="autoPickXI()">Auto-pick</button><select onchange="state.mentality=this.value;save()"><option ${state.mentality==="Ultra Defensive"?"selected":""}>Ultra Defensive</option><option ${state.mentality==="Defensive"?"selected":""}>Defensive</option><option ${state.mentality==="Balanced"?"selected":""}>Balanced</option><option ${state.mentality==="Counter-Attack"?"selected":""}>Counter-Attack</option><option ${state.mentality==="Tiki-Taka"?"selected":""}>Tiki-Taka</option><option ${state.mentality==="Attacking"?"selected":""}>Attacking</option></select></div>${mapped.map((m,i)=>{const slot=m.slot[0];return `<div class="row" style="padding:7px 0;border-bottom:1px solid var(--line)"><span>${slot}</span><select onchange="replaceXI(${i},this.value)">${state.players.map(p=>{const fit=playerRatingForPosition(p,slot);return `<option value="${p.id}" ${m.p&&m.p.id===p.id?'selected':''}>${p.name} • ${playerPositionLabel(p)} • ${fit.fit.label} • ${fit.rating}</option>`}).join("")}</select>${m.p?`<span class="sub">${playerRatingForPosition(m.p,slot).fit.label}</span>`:""}</div>`}).join("")}</div><div class="card"><h3>Bench (${bench.length})</h3>${bench.length?playerList(bench):'<div class="notice">No additional squad players are loaded for this club yet.</div>'}</div><div class="card"><h3>Squad</h3>${!canSellPlayers?'<div class="notice">Player sales are available during transfer windows.</div>':''}${playerList(state.players,true)}</div>`}
 function selectTacticPlayer(id){
  id=String(id);if(!state.players.some(p=>String(p.id)===id))return;
  if(selectedTacticPlayerId===null){selectedTacticPlayerId=id;render();return;}
