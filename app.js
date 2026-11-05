@@ -1177,7 +1177,9 @@ function completeFirstHalfForfeit(pending){
  processShownDismissals(pending,pending.firstHalf.events);
  const report={...pending.firstHalf,competition:pending.competition||"league",competitionLabel:pending.competitionLabel||null};
  const dismissed=new Map((pending.dismissals||[]).filter(d=>d.team===state.club).map(d=>[String(d.id),d.minute]));
- report.appearances={[state.club]:(pending.startingXI||[]).map(player=>({player,minutes:Math.max(0,Math.min(report.forfeitMinute||45,dismissed.get(String(player.id))??(report.forfeitMinute||45))),starts:true}))};
+ const opponent=pending.fixture.home===state.club?pending.fixture.away:pending.fixture.home;
+ pending.opponentXI=Array.isArray(pending.opponentXI)?pending.opponentXI.map(clonePlayer):lineupForStats(opponent).map(clonePlayer);
+ report.appearances={[state.club]:(pending.startingXI||[]).map(player=>({player,minutes:Math.max(0,Math.min(report.forfeitMinute||45,dismissed.get(String(player.id))??(report.forfeitMinute||45))),starts:true})),[opponent]:pending.opponentXI.map(player=>({player,minutes:report.forfeitMinute||45,starts:true}))};
  pending.finalReport=report;pending.phase="second";pending.forfeitLoser=report.forfeitLoser;
  pending.playback={segment:"second",index:0,shown:[],score:[report.hg,report.ag],goalOverlay:null,paused:true};
  completePendingMatch();
@@ -1383,6 +1385,10 @@ function matchRatingsMarkup(report,players,title){
  const rows=Object.values(ratings).sort((a,b)=>b.rating-a.rating);
  return `<div class="card"><h3>${title}</h3>${rows.map(x=>`<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><span>${x.player.name}<br><span class="sub">${x.player.pos}</span></span><b>${x.rating.toFixed(1)}</b></div>`).join("")||'<div class="sub">No player ratings available.</div>'}</div>`;
 }
+function opponentMatchRatingsMarkup(report,club,players){
+ const ratings=calculateMatchRatings(report,players),rows=Object.values(ratings).sort((a,b)=>b.rating-a.rating);
+ return `<details class="card"><summary style="cursor:pointer"><b>Opponent team & ratings</b><span class="sub" style="float:right">${club} · ${rows.length} players</span></summary><div class="sub" style="margin:10px 0">Opponent lineup and estimated match ratings. Ratings reflect recorded match events.</div>${rows.map(x=>`<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><span>${x.player.name}<br><span class="sub">${x.player.pos} · Squad OVR ${x.player.ovr}</span></span><b>${x.rating.toFixed(1)}</b></div>`).join("")||'<div class="sub">No opponent lineup available.</div>'}</details>`;
+}
 function skipLiveMatch(){
  const pending=state.pendingMatch;if(!pending)return;
  if(matchPlaybackTimer!==null){clearTimeout(matchPlaybackTimer);matchPlaybackTimer=null;}
@@ -1428,7 +1434,8 @@ function playMatch(){
  const firstRaw=generateMatchReport({home:my.home,away:my.away,hg:homeFirst,ag:awayFirst},referee);
  const first=resolveDisciplineEvents(remapMatchSegment(firstRaw,1,45,"half"));
  results[idx]={home:my.home,away:my.away,hg:homeFirst,ag:awayFirst};
- state.pendingMatch={results,roundIndex:idx,fixture:{...my},firstHalf:first,forfeitLoser:first.forfeitLoser||null,dismissals:[],referee,startingFormation:state.formation,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
+ const opponent=my.home===state.club?my.away:my.home;
+ state.pendingMatch={results,roundIndex:idx,fixture:{...my},firstHalf:first,forfeitLoser:first.forfeitLoser||null,dismissals:[],referee,startingFormation:state.formation,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),opponentXI:lineupForStats(opponent).map(clonePlayer),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
  state.lastMatch={...first,hg:homeFirst,ag:awayFirst,halfTime:true};
  state.tab="Match Report";save();render();
 }
@@ -1501,12 +1508,16 @@ function completePendingMatch(){
  restorePreMatchFormation(pending);
  removeOffPitchDisciplineEvents(pending);
  const report=pending.finalReport,fixture=pending.fixture;
+ const opponent=fixture.home===state.club?fixture.away:fixture.home;
+ pending.opponentXI=Array.isArray(pending.opponentXI)?pending.opponentXI.map(clonePlayer):lineupForStats(opponent).map(clonePlayer);
+ report.appearances=report.appearances||{};
+ report.appearances[opponent]=pending.opponentXI.map(player=>({player,minutes:Number.isFinite(report.forfeitMinute)?report.forfeitMinute:90,starts:true}));
  const initialXI=pending.startingXI||[],subLog=(pending.substitutions||[]).slice().sort((a,b)=>a.minute-b.minute);
  const endMinute=Number.isFinite(report.forfeitMinute)?report.forfeitMinute:90;
  const minutesById=new Map(initialXI.map(p=>[String(p.id),{player:p,starts:true,on:0,off:endMinute}]));
  subLog.forEach(s=>{const outgoing=minutesById.get(String(s.outId));if(outgoing)outgoing.off=Math.min(outgoing.off,s.minute);const incoming=state.players.find(p=>String(p.id)===String(s.inId));if(incoming&&!minutesById.has(String(incoming.id)))minutesById.set(String(incoming.id),{player:incoming,starts:false,on:s.minute,off:endMinute});});
  (pending.dismissals||[]).filter(d=>d.team===state.club).forEach(d=>{const entry=minutesById.get(String(d.id));if(entry)entry.off=Math.min(entry.off,d.minute);});
- report.appearances={[state.club]:[...minutesById.values()].map(x=>({player:x.player,minutes:Math.max(0,x.off-x.on),starts:x.starts}))};
+ report.appearances[state.club]=[...minutesById.values()].map(x=>({player:x.player,minutes:Math.max(0,x.off-x.on),starts:x.starts}));
  report.events=report.events.filter(e=>e.type!=="substitution");
  subLog.forEach(s=>report.events.push({minute:s.minute,type:"substitution",text:`${s.inName} replaces ${s.outName}.`,team:state.club,player:null}));
  report.events.sort((a,b)=>a.minute-b.minute||(a.type==="half"?-1:a.type==="full"?1:0));
@@ -1601,6 +1612,9 @@ function matchReportPage(){
  ${[...m.homeScorers.map(x=>`<div class="row"><span>${x.minute}' ${x.player.name}</span><span>${m.home}</span></div>`),...m.awayScorers.map(x=>`<div class="row"><span>${x.minute}' ${x.player.name}</span><span>${m.away}</span></div>`)].join("")||'<div class="sub">No goals.</div>'}</div>
  <div class="card"><button class="primary" onclick="state.tab='Home';save();render()">Continue</button> <button onclick="state.tab='Results';save();render()">View results</button></div>`;
  const ratedPlayers=(m.appearances?.[state.club]||[]).map(x=>x.player).filter(Boolean);
+ const opponentClub=m.home===state.club?m.away:m.home;
+ const opponentPlayers=(m.appearances?.[opponentClub]||[]).map(x=>x.player).filter(Boolean);
+ document.getElementById("app").insertAdjacentHTML("beforeend",opponentMatchRatingsMarkup(m,opponentClub,opponentPlayers.length?opponentPlayers:lineupForStats(opponentClub)));
  document.getElementById("app").insertAdjacentHTML("beforeend",matchRatingsMarkup(m,ratedPlayers,"Full-time player ratings"));
 }
 function saveHalfTimeChoicesAndResume(){
@@ -1722,7 +1736,8 @@ function playCup(){
  const first=resolveDisciplineEvents(remapMatchSegment(generateMatchReport({home:fixture.home,away:fixture.away,hg:firstHome,ag:firstAway},referee),1,45,"half"));
  const games=state.cup.pending.map(game=>game.home===fixture.home&&game.away===fixture.away?{...game,hg:firstHome,ag:firstAway,referee:referee.name,refereeProfile:referee.id}:simulateCupGame(game));
  const roundIndex=games.findIndex(game=>game.home===fixture.home&&game.away===fixture.away);
- state.pendingMatch={competition:"cup",competitionLabel:state.cup.roundName,results:games,roundIndex,fixture:{...fixture},firstHalf:first,forfeitLoser:first.forfeitLoser||null,dismissals:[],referee,startingFormation:state.formation,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
+ const opponent=fixture.home===state.club?fixture.away:fixture.home;
+ state.pendingMatch={competition:"cup",competitionLabel:state.cup.roundName,results:games,roundIndex,fixture:{...fixture},firstHalf:first,forfeitLoser:first.forfeitLoser||null,dismissals:[],referee,startingFormation:state.formation,startingXI:state.xi.map(id=>state.players.find(p=>p.id===id)).filter(Boolean).map(p=>({...p})),opponentXI:lineupForStats(opponent).map(clonePlayer),startedMatchday:state.matchday,phase:"first",playback:{segment:"first",index:0,shown:[],score:[0,0],goalOverlay:null,paused:false},secondHalfChoices:{tactic:"Attacking",talk:"Encourage",substitution:"none"}};
  state.lastMatch={...first,competition:"cup",competitionLabel:state.cup.roundName,hg:firstHome,ag:firstAway,halfTime:true};state.tab="Match Report";save();render();
 }
 function cup(){
